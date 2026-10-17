@@ -40,12 +40,16 @@ incompatible.
   ([LICENSE.md](https://github.com/WayfarerGames/bulletfury/blob/main/LICENSE.md),
   [repository README and sample listing](https://github.com/WayfarerGames/bulletfury);
   checked 2026-10-18.)
-- **Compatibility:** Unity 6 and URP-only support are documented. The precise
-  Editor patch `6000.3.26f1` is not named separately. Windows and Linux
-  support are unknown in the cited upstream compatibility statement.
+- **Compatibility (checked 2026-10-18):**
+  - Editor `6000.3.26f1`: **Unknown** — the README documents Unity 6+, but
+    does not name this exact Editor patch.
+  - URP: **Documented** — the README states that Bulletfury supports URP only.
+  - Windows: **Unknown** — the cited upstream compatibility sources do not
+    name this player platform.
+  - Linux: **Unknown** — the cited upstream compatibility sources do not name
+    this player platform.
   ([repository README](https://github.com/WayfarerGames/bulletfury),
-  [official documentation](https://wayfarer-games.com/bulletfury-documentation/);
-  checked 2026-10-18.)
+  [official documentation](https://wayfarer-games.com/bulletfury-documentation/).)
 
 ## Danmokou
 
@@ -70,14 +74,17 @@ incompatible.
   checked. ([Danmokou license inventory](https://github.com/Bagoum/danmokou/blob/master/Assets/Danmokou.LICENSE.md),
   [repository licensing notes](https://github.com/Bagoum/danmokou);
   checked 2026-10-18.)
-- **Compatibility:** The v11.2.0 changelog names Unity `6000.0.34f1`. An
-  earlier v9.2.0 note discusses an SRP/URP workaround, but discourages it and
-  specifies Unity 2022.2 prerelease plus an added commit. That historical note
-  does not establish URP compatibility for v11.2.0 or the project Editor patch
-  `6000.3.26f1`. Windows and Linux are not specifically established by the
-  cited setup or changelog pages. ([v11.2.0 and v9.2.0 changelog](https://github.com/Bagoum/danmokou/blob/master/docs/articles/changelog.md),
-  [setup guide](https://github.com/Bagoum/danmokou/blob/master/docs/articles/setup.md);
-  checked 2026-10-18.)
+- **Compatibility (checked 2026-10-18):**
+  - Editor `6000.3.26f1`: **Unknown** — the v11.2.0 changelog names
+    `6000.0.34f1`, not this project patch.
+  - URP: **Unknown** — the v9.2.0 note describes a discouraged historical
+    workaround; it does not establish URP support for v11.2.0.
+  - Windows: **Unknown** — the cited setup and changelog pages do not name
+    this player platform.
+  - Linux: **Unknown** — the cited setup and changelog pages do not name this
+    player platform.
+  ([v11.2.0 and v9.2.0 changelog](https://github.com/Bagoum/danmokou/blob/master/docs/articles/changelog.md),
+  [setup guide](https://github.com/Bagoum/danmokou/blob/master/docs/articles/setup.md).)
 
 ## BulletMLPlayer
 
@@ -100,11 +107,13 @@ incompatible.
   therefore unknown from these sources.
   ([README and top-level listing](https://github.com/jam0824/BulletMlPlayer);
   checked 2026-10-18.)
-- **Compatibility:** The README recommends Unity 2021.3 or newer and lists
-  .NET Standard 2.1. It does not document this project's exact Editor patch
-  `6000.3.26f1`, URP, Windows, or Linux compatibility.
-  ([README](https://github.com/jam0824/BulletMlPlayer);
-  checked 2026-10-18.)
+- **Compatibility (checked 2026-10-18):**
+  - Editor `6000.3.26f1`: **Unknown** — the README recommends Unity 2021.3+
+    and lists .NET Standard 2.1, but does not name this exact Editor patch.
+  - URP: **Unknown** — the README does not document URP compatibility.
+  - Windows: **Unknown** — the README does not name this player platform.
+  - Linux: **Unknown** — the README does not name this player platform.
+  ([README](https://github.com/jam0824/BulletMlPlayer).)
 
 ## DanmakU
 
@@ -124,12 +133,14 @@ incompatible.
   ([LICENSE](https://github.com/james7132/DanmakU/blob/develop/LICENSE),
   [repository README](https://github.com/james7132/DanmakU);
   checked 2026-10-18.)
-- **Compatibility:** The README lists Unity 2018.1 or newer and requires
-  procedural GPU instancing, including Shader Model 4.5 or newer for bullet
-  shaders. This minimum does not establish compatibility with Editor
-  `6000.3.26f1`; URP, Windows, and Linux compatibility are unknown in the
-  cited upstream documentation. ([README](https://github.com/james7132/DanmakU);
-  checked 2026-10-18.)
+- **Compatibility (checked 2026-10-18):**
+  - Editor `6000.3.26f1`: **Unknown** — the README lists Unity 2018.1+ and
+    procedural GPU-instancing requirements, but does not name this exact
+    Editor patch.
+  - URP: **Unknown** — the README does not document URP compatibility.
+  - Windows: **Unknown** — the README does not name this player platform.
+  - Linux: **Unknown** — the README does not name this player platform.
+  ([README](https://github.com/james7132/DanmakU).)
 
 ## Project-Owned C# Coroutine DSL
 
@@ -147,13 +158,19 @@ incompatible.
   are Unity engine APIs, not an independently adopted OSS shmup framework.
   ([Unity coroutine manual](https://docs.unity3d.com/6000.3/Documentation/Manual/Coroutines.html);
   checked 2026-10-18.)
-- **Compatibility:** The Unity 6000.3 manual documents coroutines for the
-  Unity Player runtime, including standalone Players. That page does not
-  specifically state compatibility with this project's URP setup or Windows
-  and Linux targets. URP is separate from coroutine scheduling; target builds
-  still require project-level verification. Local compatibility testing was
-  not performed. ([Unity coroutine manual](https://docs.unity3d.com/6000.3/Documentation/Manual/Coroutines.html);
-  checked 2026-10-18.)
+- **Compatibility (checked 2026-10-18):**
+  - Editor `6000.3.26f1`: **Unknown** — the Unity 6000.3 manual documents
+    coroutine APIs for the Unity Player, but does not identify this exact
+    Editor patch.
+  - URP: **Unknown** — the coroutine documentation does not state compatibility
+    with this project's render pipeline.
+  - Windows: **Unknown** — the coroutine documentation does not name this
+    player platform.
+  - Linux: **Unknown** — the coroutine documentation does not name this player
+    platform.
+  ([Unity coroutine manual](https://docs.unity3d.com/6000.3/Documentation/Manual/Coroutines.html),
+  [StartCoroutine API](https://docs.unity3d.com/6000.3/Documentation/ScriptReference/MonoBehaviour.StartCoroutine.html).)
+  Local compatibility testing was not performed.
 
 ## Verification Boundary
 
