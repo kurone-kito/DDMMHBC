@@ -8,6 +8,8 @@ tags:
   - bullet-hell
   - unity-6
   - urp
+  - windows
+  - linux
 summary: Dated, source-linked survey of OSS shmup framework candidates and a project-owned C# coroutine DSL; no option is selected.
 source: Upstream repositories, documentation, changelogs, and license notices checked 2026-10-18.
 document: ../architecture/shmup-framework-survey.md
