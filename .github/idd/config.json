@@ -1,0 +1,93 @@
+{
+  "$schema": "https://kurone-kito.github.io/idd-skill/schemas/policy.schema.json",
+  "iddVersion": "0.16.0",
+  "markerPrefix": "ddmmhbc",
+  "developmentBranch": "main",
+  "authoringLanguage": "en",
+  "mergePolicy": "fully_autonomous_merge",
+  "mergePolicyAck": "fully_autonomous_merge",
+  "reviewPolicy": "copilot-advisory",
+  "threadResolutionPolicy": "fast-agent-resolve",
+  "claimTiming": {
+    "staleAge": "PT24H",
+    "heartbeatInterval": "PT12H"
+  },
+  "trustedMarkerActors": [
+    "kurone-kito"
+  ],
+  "advisoryBotLogins": [
+    "coderabbitai[bot]",
+    "chatgpt-codex-connector[bot]"
+  ],
+  "workshop": {
+    "exampleRepository": ""
+  },
+  "commands": {
+    "install-deps": "true",
+    "fix-validate": "npx --yes markdownlint-cli2 --fix \"**/*.md\" && npx --yes cspell \"**\" # cspell:ignore ddmmhbc DDMMHBC Desync waivable ",
+    "pre-push-validate": "npx --yes cspell \"**\" && npx --yes markdownlint-cli2 \"**/*.md\"",
+    "post-fix-validate": "npx --yes cspell \"**\" && npx --yes markdownlint-cli2 \"**/*.md\""
+  },
+  "helperRuntime": {
+    "profile": "ephemeral-npx",
+    "launcher": "npx",
+    "packageSpec": "https://codeload.github.com/kurone-kito/idd-skill/tar.gz/e4d425ee28b1893dd45c4996b2506619018c4b2b"
+  },
+  "issueScope": "roadmap-first",
+  "orphanFirstPolicy": "none",
+  "issueAuthoring": {
+    "journalIssue": "kurone-kito/DDMMHBC#1"
+  },
+  "advisoryWait": {
+    "convergenceScope": "idd-claimed",
+    "convergenceDeadline": "PT9H",
+    "secondaryBotLogin": "coderabbitai[bot]",
+    "secondaryQuietWindow": "PT5M"
+  },
+  "discover": {
+    "selectionDesync": "session-offset"
+  },
+  "critiqueLoop": {
+    "deferAfterRounds": 5,
+    "deferByUrgency": "severity-tiered",
+    "deferRelaxAtRounds": [4, 7],
+    "telemetryHook": {
+      "command": "idd-critique-telemetry"
+    }
+  },
+  "forcedHandoff": {
+    "mode": "human-gated",
+    "authorityPolicy": "owners-and-maintainers-only"
+  },
+  "autopilotSuitability": {
+    "floor": 3
+  },
+  "worktreeGuard": {
+    "enabled": true
+  },
+  "orchestrator": {
+    "maxWorkers": 4
+  },
+  "githubApi": {
+    "readCache": {
+      "enabled": true
+    },
+    "loadControl": {
+      "enabled": true,
+      "maxConcurrent": 4
+    }
+  },
+  "ciGate": {
+    "trustEmptyProtectionReads": true,
+    "externalChecks": {
+      "waivable": [
+        { "selector": "idd-advisory-convergence", "matchMode": "exact" }
+      ]
+    },
+    "externalCheckWaivers": {
+      "mode": "maintainer-authorized",
+      "authorityPolicy": "owners-and-maintainers-only",
+      "maxValidity": "PT24H"
+    }
+  }
+}
