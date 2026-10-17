@@ -1,0 +1,12 @@
+id: project-overview
+title: Project overview
+category: project
+status: confirmed
+tags:
+  - vertical-shooter
+  - unity-6
+  - windows
+  - linux
+summary: A roughly three-minute one-shot 2D vertical bullet-hell shooter for Windows and Linux PC, built with Unity 6.
+source: Maintainer-provided project brief; see the linked canonical overview.
+document: ../index.md
