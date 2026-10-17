@@ -1,4 +1,4 @@
-<!-- cspell:ignore DDMMHBC -->
+<!-- cspell:ignore DDMMHBC Shmup -->
 
 # DDMMHBC documentation
 
@@ -45,9 +45,11 @@ will serve as a Minecraft-like placeholder model for prerendering. The project
 uses a reusable structure even though the game itself is intended as a single
 work.
 
-## Initial knowledge record
+## Knowledge records
 
 - [DDMMHBC project overview](knowledge/format-example.yml) — confirmed project
   scope and the record format in use.
+- [Shmup framework survey](knowledge/shmup-framework-survey.yml) — provisional,
+  source-linked inventory of candidate frameworks and the coroutine alternative.
 - [Knowledge-entry schema](schemas/knowledge-entry.schema.json) — validation
   contract for YAML records.
