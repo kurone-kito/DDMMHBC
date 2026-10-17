@@ -70,10 +70,12 @@ incompatible.
   checked. ([Danmokou license inventory](https://github.com/Bagoum/danmokou/blob/master/Assets/Danmokou.LICENSE.md),
   [repository licensing notes](https://github.com/Bagoum/danmokou);
   checked 2026-10-18.)
-- **Compatibility:** The v11.2.0 changelog names Unity `6000.0.34f1`. The
-  exact project Editor patch `6000.3.26f1`, URP, Windows, and Linux are not
-  specifically established by the cited setup or changelog pages.
-  ([v11.2.0 changelog](https://github.com/Bagoum/danmokou/blob/master/docs/articles/changelog.md),
+- **Compatibility:** The v11.2.0 changelog names Unity `6000.0.34f1`. An
+  earlier v9.2.0 note discusses an SRP/URP workaround, but discourages it and
+  specifies Unity 2022.2 prerelease plus an added commit. That historical note
+  does not establish URP compatibility for v11.2.0 or the project Editor patch
+  `6000.3.26f1`. Windows and Linux are not specifically established by the
+  cited setup or changelog pages. ([v11.2.0 and v9.2.0 changelog](https://github.com/Bagoum/danmokou/blob/master/docs/articles/changelog.md),
   [setup guide](https://github.com/Bagoum/danmokou/blob/master/docs/articles/setup.md);
   checked 2026-10-18.)
 

@@ -1,0 +1,13 @@
+# cspell:ignore shmup
+id: shmup-framework-survey
+title: Open-source shmup framework survey
+category: research
+status: provisional
+tags:
+  - shmup
+  - bullet-hell
+  - unity-6
+  - urp
+summary: Dated, source-linked survey of OSS shmup framework candidates and a project-owned C# coroutine DSL; no option is selected.
+source: Upstream repositories, documentation, changelogs, and license notices checked 2026-10-18.
+document: ../architecture/shmup-framework-survey.md
