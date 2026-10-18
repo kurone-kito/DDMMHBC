@@ -1,2 +1,11 @@
 ignores:
   - .github/CODE_OF_CONDUCT*
+  # Unity generates third-party Markdown under these ignored directories.
+  - Library/**
+  - Temp/**
+  - Obj/**
+  - Logs/**
+  - Build/**
+  - Builds/**
+  - UserSettings/**
+  - MemoryCaptures/**
