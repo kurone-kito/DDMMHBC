@@ -16,6 +16,12 @@ globRoot: ${cwd}
 ignorePaths:
   - .*ignore
   - .git
+  - Assets/**/*.asset
+  - Assets/**/*.meta
+  - Assets/**/*.inputactions
+  - Assets/**/*.wlt
+  - Packages/**
+  - ProjectSettings/**
   - .github/CODE_OF_CONDUCT.*
   - .vscode/extensions.json
 language: en,ja
@@ -24,6 +30,8 @@ useIntlWordSegmentation: true
 validateDirectives: true
 version: '0.2'
 words:
+  - DDMMHBC
+  - Mathf
   - kito
   - kuron
   - kurone
