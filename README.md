@@ -1,62 +1,56 @@
-# 📄 Generic repository template
+<!-- cspell:ignore shmup -->
+
+# DDMMHBC
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Linting](https://github.com/kurone-kito/template/actions/workflows/lint.yml/badge.svg)](https://github.com/kurone-kito/template/actions/workflows/lint.yml)
-[![CodeRabbit](https://img.shields.io/badge/review-CodeRabbit-green?logo=coderabbit)](https://www.coderabbit.ai/)
+[![Linting](https://github.com/kurone-kito/DDMMHBC/actions/workflows/lint.yml/badge.svg)](https://github.com/kurone-kito/DDMMHBC/actions/workflows/lint.yml)
 
-A language-agnostic project template designed as the root of a hierarchy
-of derived templates.
+DDMMHBC is the codename and provisional title for a one-shot, roughly
+three-minute 2D vertical bullet-hell shooter for Windows and Linux PC. It is
+being developed with Unity 6 and the Universal Render Pipeline (URP), using
+Unity Editor `6000.3.26f1`.
 
-## Features
+## Project overview
 
-- AI agent guidance with a single canonical guide and thin
-  per-harness adapters
-  ([canonical guide](AGENTS.md),
-  [Claude Code adapter](CLAUDE.md),
-  [Antigravity CLI adapter](GEMINI.md),
-  [GitHub Copilot adapter](.github/copilot-instructions.md),
-  [strategy notes](docs/ai-strategy.md))
-- CI/CD
-  - [CodeRabbit](https://www.coderabbit.ai/)
-  - [ImgBot](https://imgbot.net/)
-  - Linting on GitHub Actions
-  - Stale issues and pull requests management on GitHub Actions
-- [Conventional Commits](https://www.conventionalcommits.org/)
-- Documents for GitHub
-- Git attributes
-- Linters
-  - [CSpell](https://cspell.org/)
-  - [EditorConfig](https://editorconfig.org/)
-  - [MarkdownLint](https://github.com/DavidAnson/markdownlint)
+The game is intended as one complete, short playthrough. Its visual direction
+combines 3D backgrounds with prerendered character sprites to evoke arcade
+shooters from the mid-to-late 2000s. The target composition is a 16:9 PC image
+with a centered 3:4 vertical playfield, leaving room around the playfield for
+video framing.
 
-### Recommended NeoVim / Vim plugins
+The current repository contains the reusable Unity project baseline. The boot
+scene and placeholder sprite are planned work tracked in [issue #11].
+Until original art is available, the planned placeholder is a replaceable
+sprite rendered from a Unity Cube at a single view. These visual placeholders
+are not final art. Gameplay has not been implemented, and the framework
+approach remains undecided; see the [framework survey] for the candidate
+inventory.
 
-- [editorconfig-vim](https://github.com/editorconfig/editorconfig-vim) —
-  EditorConfig support
-- [cspell.nvim](https://github.com/davidmh/cspell.nvim) — CSpell
-  integration for NeoVim (via null-ls / none-ls)
+## Open the Unity project
 
-## Using this template
+1. Install Unity Hub and Unity Editor `6000.3.26f1`.
+2. Add this repository's root folder as a Unity project and open it with that
+   Editor version. Unity resolves the declared packages from
+   [`Packages/manifest.json`](Packages/manifest.json).
 
-1. Click "Use this template" on GitHub to create your repository.
-2. Replace the LICENSE file if you prefer a different license.
-3. Review workflows under `.github/workflows` and adjust them to your needs.
-4. Customize the configuration files:
-   - `.editorconfig` sets editor rules.
-   - `.gitattributes` manages line ending normalization and export rules.
-   - `.imgbotconfig` controls image optimization.
-   - `.markdownlint.yml` and `.markdownlint-cli2.yaml` define Markdown
-     lint rules.
-   - `.cspell.config.yml` configures spell checking.
-   - `.coderabbit.yaml` contains CodeRabbit settings.
-   - `.vscode/` provides recommended settings for VS Code.
-5. Update documents in `.github/` such as CONTRIBUTING.md to match your
-   policies.
-6. Review `docs/ai-strategy.md`, then update `AGENTS.md` to reflect
-   your project specifics. `CLAUDE.md`, `GEMINI.md`, and
-   `.github/copilot-instructions.md` rarely need changes, since they
-   import or reference `AGENTS.md` instead of duplicating it.
+## Documentation
+
+Start with the [documentation index](docs/index.md). It describes the static
+requirements knowledge base, how to search its YAML records, and where to find
+the authoritative project overview and schema.
+
+## 日本語概要
+
+DDMMHBC は、Windows/Linux PC 向けに Unity 6 と URP で制作する、プレイ時間
+約 3 分の一発もの縦型弾幕シューティングのコードネーム兼暫定タイトルです。
+3D 背景とプリレンダリングしたキャラクターで、2000 年代中後半の STG らしい
+映像表現を目指します。オリジナル素材が届くまでは、Unity の Cube を単一視点で
+描画した差し替え可能な仮素材を使う予定です。現在は Unity の基礎設定までで、
+起動シーンと Cube の Sprite は [issue #11] で整備する予定です。
 
 ## License
 
 [MIT](./LICENSE)
+
+[issue #11]: https://github.com/kurone-kito/DDMMHBC/issues/11
+[framework survey]: docs/architecture/shmup-framework-survey.md
