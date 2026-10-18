@@ -137,3 +137,29 @@ $RECYCLE.BIN/
 ### NeoVim ###
 # Project-local NeoVim config
 .nvim.lua
+
+### Unity ###
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+.vs/
+*.csproj
+*.sln
+*.slnx
+*.unityproj
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svclog
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
