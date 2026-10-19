@@ -30,7 +30,11 @@ useIntlWordSegmentation: true
 validateDirectives: true
 version: '0.2'
 words:
+  - Atrous
   - DDMMHBC
+  - Denoiser
+  - MSAA
+  - Occludee
   - Mathf
   - kito
   - kuron
