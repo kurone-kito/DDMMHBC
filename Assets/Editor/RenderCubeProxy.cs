@@ -368,7 +368,7 @@ namespace Ddmmhbc.EditorTools
       {
         throw new InvalidOperationException("The URP orthographic Main Camera is missing or incomplete.");
       }
-      ValidateBackdropRendering(mainCamera);
+      ValidateBackdropRendering(scene, mainCamera);
 
       var canvasScaleFactor = presentationCanvas == null ? 0f : presentationCanvas.scaleFactor;
       var canvasLocalScale = presentationCanvas == null
@@ -437,7 +437,7 @@ namespace Ddmmhbc.EditorTools
         $"Boot scene validation passed: URP camera, 3:4 playfield, Cube Sprite, and 3D backdrop (Canvas scale factor: {canvasScaleFactor}).");
     }
 
-    private static void ValidateBackdropRendering(Camera camera)
+    private static void ValidateBackdropRendering(Scene scene, Camera camera)
     {
       const int width = 320;
       const int height = 180;
@@ -453,8 +453,10 @@ namespace Ddmmhbc.EditorTools
       };
       Texture2D capture = null;
       var previousActiveTexture = RenderTexture.active;
+      var previousSceneCullingMask = camera.overrideSceneCullingMask;
       try
       {
+        camera.overrideSceneCullingMask = EditorSceneManager.GetSceneCullingMask(scene);
         target.Create();
         var request = new UniversalRenderPipeline.SingleCameraRequest();
         if (!RenderPipeline.SupportsRenderRequest(camera, request))
@@ -486,6 +488,7 @@ namespace Ddmmhbc.EditorTools
       }
       finally
       {
+        camera.overrideSceneCullingMask = previousSceneCullingMask;
         RenderTexture.active = previousActiveTexture;
         if (target != null)
         {
