@@ -1,0 +1,12 @@
+id: visual-direction
+title: Visual direction requirements
+category: visual-direction
+status: provisional
+tags:
+  - 16-9
+  - 3-4-playfield
+  - prerendered-sprites
+  - unity-6
+summary: Confirmed screen composition with provisional character artwork and an interim single-view Cube sprite.
+source: "Project foundation roadmap issue #4 and boot-scene issue #11."
+document: ../requirements/visual-direction.md

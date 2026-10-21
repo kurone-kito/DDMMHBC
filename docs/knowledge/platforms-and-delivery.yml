@@ -1,0 +1,12 @@
+id: platforms-and-delivery
+title: Platforms and delivery requirements
+category: delivery
+status: confirmed
+tags:
+  - windows
+  - linux
+  - unity-6
+  - github-actions
+summary: Confirmed Windows and Linux targets plus the planned PR, Nightly, and release build behavior.
+source: "Project foundation roadmap issue #4 and build workflow issues #12 through #15."
+document: ../requirements/platforms-and-delivery.md

@@ -1,0 +1,12 @@
+id: project-overview-requirements
+title: Project overview requirements
+category: project
+status: confirmed
+tags:
+  - vertical-shooter
+  - unity-6
+  - windows
+  - linux
+summary: Confirmed game scope and Unity platform baseline, with title and interim art called out as provisional.
+source: "Project foundation roadmap issue #4 and boot-scene issue #11."
+document: ../requirements/project-overview.md

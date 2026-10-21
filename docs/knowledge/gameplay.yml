@@ -1,0 +1,11 @@
+id: gameplay
+title: Gameplay requirements
+category: gameplay
+status: confirmed
+tags:
+  - vertical-shooter
+  - bullet-hell
+  - gameplay-scope
+summary: A roughly three-minute one-shot vertical shooter whose detailed mechanics and bullet-pattern authoring approach remain open.
+source: "Project foundation roadmap issue #4; deferred authoring decision issue #6 and survey issue #16."
+document: ../requirements/gameplay.md
