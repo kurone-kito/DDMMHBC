@@ -13,6 +13,8 @@ feature or delivery workflow has been implemented.
   does not specify lives, continues, exact stage count, or other detailed rules.
 - The project uses Unity Editor `6000.3.26f1` with the Universal Render Pipeline
   (URP).
+- Reusable project code stays separate from game-specific content, while the
+  game itself remains one complete work.
 - The game combines 3D backgrounds with character sprites prepared before
   gameplay. The [visual page](visual-direction.md) explains the planned screen
   composition.

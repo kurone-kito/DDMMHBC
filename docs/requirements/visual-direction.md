@@ -8,7 +8,7 @@ It describes the intended look, not a final art specification.
 ## Confirmed composition and style
 
 - The target output is a 16:9 PC image. A centered 3:4 portrait playfield sits
-  inside it, leaving space on both sides for later framing or HUD content. The
+  inside it, leaving space on both sides for video framing. The
   brief does not define an exact pixel resolution or final HUD layout.
 - Backgrounds are 3D, while characters use sprites rendered before gameplay
   rather than live character models in the playfield.
