@@ -10,8 +10,8 @@ code.
 
 ## Corpus layout
 
-- `index.md` is the entry point and the canonical project overview while the
-  project is being bootstrapped.
+- `index.md` is the entry point and a short project overview. Focused
+  requirements live in `requirements/`.
 - `knowledge/*.yml` contains small metadata records. Each record links to its
   authoritative Markdown page through its `document` field, using a path
   relative to the YAML file.
@@ -36,20 +36,30 @@ record and its linked page differ, use the Markdown page and update the record.
 
 ## Project overview
 
-DDMMHBC is the codename and provisional title for a one-shot 2D vertical
-bullet-hell shooter made with Unity 6. A playthrough is expected to last about
-three minutes. The game targets Windows and Linux PC and uses URP. Its
-backgrounds are 3D, while characters use prerendered sprites to evoke the look
-of games from the mid-to-late 2000s. Until project art is supplied, a Unity Cube
-will serve as a Minecraft-like placeholder model for prerendering. The project
-uses a reusable structure even though the game itself is intended as a single
-work.
+DDMMHBC is the codename and provisional title for a one-shot, roughly
+three-minute 2D vertical bullet-hell shooter made with Unity 6 and URP for
+Windows and Linux PC. Its visual direction combines 3D backgrounds with
+prerendered character sprites. The planned composition is a 16:9 PC image with
+a centered 3:4 vertical playfield. Until original art is available, a
+replaceable static sprite rendered from one view of a Unity Cube serves as
+interim character artwork.
 
-## Knowledge records
+## Requirement pages
 
-- [DDMMHBC project overview](knowledge/format-example.yml) — confirmed project
-  scope and the record format in use.
+- [Project overview](requirements/project-overview.md) —
+  [YAML record](knowledge/project-overview.yml).
+- [Gameplay requirements](requirements/gameplay.md) —
+  [YAML record](knowledge/gameplay.yml).
+- [Visual direction](requirements/visual-direction.md) —
+  [YAML record](knowledge/visual-direction.yml).
+- [Platforms and delivery](requirements/platforms-and-delivery.md) —
+  [YAML record](knowledge/platforms-and-delivery.yml).
+
+## Other knowledge records
+
+- [DDMMHBC project overview example](knowledge/format-example.yml) — confirmed
+  scope and the original record-format example.
 - [Shmup framework survey](knowledge/shmup-framework-survey.yml) — provisional,
-  source-linked inventory of candidate frameworks and the coroutine alternative.
+  source-linked candidate inventory; no option is selected.
 - [Knowledge-entry schema](schemas/knowledge-entry.schema.json) — validation
   contract for YAML records.
