@@ -1,6 +1,14 @@
 name: Unity build
 
 on:
+  workflow_call:
+    secrets:
+      UNITY_LICENSE:
+        required: false
+      UNITY_EMAIL:
+        required: false
+      UNITY_PASSWORD:
+        required: false
   workflow_dispatch:
 
 permissions:
@@ -8,7 +16,27 @@ permissions:
 
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/issue/12-ci-add-reusable-windows-linux-unity'
+    # Direct dispatch is limited to this workflow on main. Reusable callers
+    # must be from this repository, use an allowed event, and target main or
+    # a version tag. Excluding this workflow's own path prevents direct tag
+    # dispatches from being mistaken for reusable calls.
+    if: >-
+      github.repository == 'kurone-kito/DDMMHBC' &&
+      (
+        (
+          github.event_name == 'workflow_dispatch' &&
+          github.ref == 'refs/heads/main' &&
+          github.workflow_ref == 'kurone-kito/DDMMHBC/.github/workflows/unity-build.yml@refs/heads/main'
+        ) ||
+        (
+          !startsWith(github.workflow_ref, 'kurone-kito/DDMMHBC/.github/workflows/unity-build.yml@') &&
+          contains(fromJSON('["push","schedule","release","workflow_dispatch"]'), github.event_name) &&
+          (
+            github.ref == 'refs/heads/main' ||
+            startsWith(github.ref, 'refs/tags/v')
+          )
+        )
+      )
     strategy:
       fail-fast: false
       matrix:
