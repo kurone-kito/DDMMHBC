@@ -4,11 +4,11 @@ on:
   workflow_call:
     secrets:
       UNITY_LICENSE:
-        required: false
+        required: true
       UNITY_EMAIL:
-        required: false
+        required: true
       UNITY_PASSWORD:
-        required: false
+        required: true
   workflow_dispatch:
 
 permissions:
@@ -16,10 +16,11 @@ permissions:
 
 jobs:
   build:
-    # Direct dispatch is limited to this workflow on main. Reusable callers
-    # must be from this repository, use an allowed event, and target main or
-    # a version tag. Excluding this workflow's own path prevents direct tag
-    # dispatches from being mistaken for reusable calls.
+    # This workflow passes repository secrets to build code. Same-repository
+    # PR callers are trusted; fork PRs and pull_request_target callers are not.
+    # Manual dispatch and branch events are main-only; version tags are only
+    # allowed for release events. Exclude this workflow's own path from the
+    # reusable-caller branch so direct dispatches cannot use the wider policy.
     if: >-
       github.repository == 'kurone-kito/DDMMHBC' &&
       (
@@ -30,10 +31,17 @@ jobs:
         ) ||
         (
           !startsWith(github.workflow_ref, 'kurone-kito/DDMMHBC/.github/workflows/unity-build.yml@') &&
-          contains(fromJSON('["push","schedule","release","workflow_dispatch"]'), github.event_name) &&
           (
-            github.ref == 'refs/heads/main' ||
-            startsWith(github.ref, 'refs/tags/v')
+            (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+            (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+            (github.event_name == 'schedule' && github.ref == 'refs/heads/main') ||
+            (github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v')) ||
+            (
+              github.event_name == 'pull_request' &&
+              github.event.pull_request.base.repo.full_name == 'kurone-kito/DDMMHBC' &&
+              github.event.pull_request.base.ref == 'main' &&
+              github.event.pull_request.head.repo.full_name == 'kurone-kito/DDMMHBC'
+            )
           )
         )
       )
