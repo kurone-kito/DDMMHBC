@@ -73,10 +73,14 @@ jobs:
           targetPlatform: ${{ matrix.targetPlatform }}
           buildsPath: build
 
+      - name: Archive Linux player with permissions
+        if: matrix.targetPlatform == 'StandaloneLinux64'
+        run: tar -czf build/StandaloneLinux64.tar.gz -C build StandaloneLinux64
+
       - name: Upload platform build
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Unity-${{ matrix.targetPlatform }}
-          path: build/${{ matrix.targetPlatform }}
+          path: ${{ matrix.targetPlatform == 'StandaloneLinux64' && 'build/StandaloneLinux64.tar.gz' || format('build/{0}', matrix.targetPlatform) }}
           if-no-files-found: error
           retention-days: 7
