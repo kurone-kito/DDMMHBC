@@ -10,6 +10,11 @@ on:
       UNITY_PASSWORD:
         required: true
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/unity-build.yml
 
 permissions:
   contents: read
@@ -20,8 +25,8 @@ jobs:
     # PR callers are trusted; fork PRs and pull_request_target callers are not.
     # Direct and reusable manual dispatches are main-only. Branch and release
     # refs use their event-specific rules below. Exclude this workflow's own
-    # path from reusable-caller checks so direct dispatches cannot use the
-    # wider policy.
+    # path from reusable-caller checks so its direct triggers cannot use the
+    # wider caller policy.
     if: >-
       github.repository == 'kurone-kito/DDMMHBC' &&
       (
@@ -29,6 +34,13 @@ jobs:
           github.event_name == 'workflow_dispatch' &&
           github.ref == 'refs/heads/main' &&
           github.workflow_ref == 'kurone-kito/DDMMHBC/.github/workflows/unity-build.yml@refs/heads/main'
+        ) ||
+        (
+          github.event_name == 'pull_request' &&
+          github.workflow_ref == format('kurone-kito/DDMMHBC/.github/workflows/unity-build.yml@{0}', github.ref) &&
+          github.event.pull_request.base.repo.full_name == 'kurone-kito/DDMMHBC' &&
+          github.event.pull_request.base.ref == 'main' &&
+          github.event.pull_request.head.repo.full_name == 'kurone-kito/DDMMHBC'
         ) ||
         (
           !startsWith(github.workflow_ref, 'kurone-kito/DDMMHBC/.github/workflows/unity-build.yml@') &&
@@ -76,12 +88,12 @@ jobs:
 
       - name: Archive Linux player with permissions
         if: matrix.targetPlatform == 'StandaloneLinux64'
-        run: tar -czf build/StandaloneLinux64.tar.gz -C build StandaloneLinux64
+        run: tar -czf "$RUNNER_TEMP/StandaloneLinux64.tar.gz" -C build StandaloneLinux64
 
       - name: Upload platform build
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Unity-${{ matrix.targetPlatform }}
-          path: ${{ matrix.targetPlatform == 'StandaloneLinux64' && 'build/StandaloneLinux64.tar.gz' || format('build/{0}', matrix.targetPlatform) }}
+          path: ${{ matrix.targetPlatform == 'StandaloneLinux64' && format('{0}/StandaloneLinux64.tar.gz', runner.temp) || format('build/{0}', matrix.targetPlatform) }}
           if-no-files-found: error
           retention-days: 7
