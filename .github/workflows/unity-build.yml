@@ -1,0 +1,15 @@
+name: Unity build bootstrap
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inert:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Keep this scaffold inert until issue #12 implements it
+        run: 'true'
