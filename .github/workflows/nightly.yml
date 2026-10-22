@@ -1,15 +1,259 @@
 name: Nightly
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "Assets/**"
+      - "Packages/**"
+      - "ProjectSettings/**"
+      - ".github/workflows/nightly.yml"
+      - ".github/workflows/unity-build.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/nightly.yml"
 
-permissions:
-  contents: read
+permissions: {}
+
+concurrency:
+  group: nightly-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  placeholder:
-    if: ${{ github.event_name != 'workflow_dispatch' }}
+  build:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/unity-build.yml
+    secrets:
+      UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
     runs-on: ubuntu-24.04
+    permissions:
+      actions: read
     steps:
-      - name: No-op placeholder
-        run: ':'
+      - name: Download Linux staging artifact
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: Unity-StandaloneLinux64
+          path: .nightly/linux
+
+      - name: Download Windows staging artifact
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: Unity-StandaloneWindows64
+          path: .nightly/windows
+
+      - name: Upload Linux Nightly artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: Nightly-${{ github.sha }}-StandaloneLinux64-attempt-${{ github.run_attempt }}
+          path: .nightly/linux/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload Windows Nightly artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: Nightly-${{ github.sha }}-StandaloneWindows64-attempt-${{ github.run_attempt }}
+          path: .nightly/windows/
+          if-no-files-found: error
+          retention-days: 90
+
+  prune:
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
+    needs: [build, publish]
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+    steps:
+      - name: Retain only the three newest successful Nightly generations
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          CURRENT_SHA: ${{ github.sha }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          CURRENT_RUN_NUMBER: ${{ github.run_number }}
+          CURRENT_RUN_ATTEMPT: ${{ github.run_attempt }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const currentRunId = Number(process.env.CURRENT_RUN_ID);
+            const currentRunNumber = Number(process.env.CURRENT_RUN_NUMBER);
+            const currentAttempt = Number(process.env.CURRENT_RUN_ATTEMPT);
+            const currentSha = process.env.CURRENT_SHA;
+            const platforms = ["StandaloneLinux64", "StandaloneWindows64"];
+
+            if (!/^[0-9a-f]{40}$/.test(currentSha)) {
+              throw new Error("Current commit SHA is missing or invalid.");
+            }
+
+            async function listAllPages(request, params, collectionKey) {
+              const items = [];
+              let expectedTotal;
+              let page = 1;
+
+              while (expectedTotal === undefined || items.length < expectedTotal) {
+                const response = await request({
+                  ...params,
+                  per_page: 100,
+                  page,
+                });
+                const pageItems = response.data[collectionKey];
+                const total = response.data.total_count;
+
+                if (!Array.isArray(pageItems) || !Number.isInteger(total)) {
+                  throw new Error("Incomplete " + collectionKey + " inventory response.");
+                }
+                if (expectedTotal === undefined) {
+                  expectedTotal = total;
+                } else if (expectedTotal !== total) {
+                  throw new Error(collectionKey + " inventory changed while reading.");
+                }
+
+                items.push(...pageItems);
+                if (items.length < expectedTotal && pageItems.length === 0) {
+                  throw new Error(collectionKey + " inventory ended before total_count.");
+                }
+                page += 1;
+              }
+
+              if (items.length !== expectedTotal) {
+                throw new Error(collectionKey + " inventory is incomplete.");
+              }
+              return items;
+            }
+
+            const runs = await listAllPages(
+              github.rest.actions.listWorkflowRuns,
+              { owner, repo, workflow_id: "nightly.yml", branch: "main" },
+              "workflow_runs",
+            );
+
+            let currentRun = runs.find((run) => Number(run.id) === currentRunId);
+            if (currentRun && currentRun.head_sha !== currentSha) {
+              throw new Error("Current workflow run SHA did not match the event SHA.");
+            }
+            if (!currentRun) {
+              currentRun = {
+                id: currentRunId,
+                run_number: currentRunNumber,
+                run_attempt: currentAttempt,
+                head_sha: currentSha,
+                head_branch: "main",
+                event: "push",
+                status: "in_progress",
+                conclusion: null,
+              };
+              runs.push(currentRun);
+            }
+
+            const relevantRuns = runs.filter(
+              (run) => run.event === "push" && run.head_branch === "main",
+            );
+            const overlappingRuns = relevantRuns.filter(
+              (run) =>
+                Number(run.id) !== currentRunId &&
+                run.status === "in_progress",
+            );
+            if (overlappingRuns.length > 0) {
+              throw new Error("Another main Nightly run is active; refusing to prune during overlap.");
+            }
+
+            const inventories = [];
+            for (const run of relevantRuns) {
+              if (run.status !== "completed" && Number(run.id) !== currentRunId) {
+                continue;
+              }
+              const artifacts = await listAllPages(
+                github.rest.actions.listWorkflowRunArtifacts,
+                { owner, repo, run_id: Number(run.id) },
+                "artifacts",
+              );
+              inventories.push({ run, artifacts });
+            }
+
+            const generations = [];
+            for (const inventory of inventories) {
+              const { run, artifacts } = inventory;
+              const isCurrent = Number(run.id) === currentRunId;
+              const runSucceeded = isCurrent
+                ? process.env.BUILD_RESULT === "success" &&
+                  process.env.PUBLISH_RESULT === "success"
+                : run.conclusion === "success";
+              if (!runSucceeded) {
+                continue;
+              }
+
+              if (!/^[0-9a-f]{40}$/.test(run.head_sha) || !Number.isInteger(Number(run.run_attempt))) {
+                throw new Error("Run " + run.id + " has invalid generation metadata.");
+              }
+              const expectedNames = platforms.map(
+                (platform) =>
+                  "Nightly-" + run.head_sha + "-" + platform + "-attempt-" + run.run_attempt,
+              );
+              const availableNames = new Set(
+                artifacts.filter((artifact) => !artifact.expired).map((artifact) => artifact.name),
+              );
+              if (expectedNames.every((name) => availableNames.has(name))) {
+                generations.push({ run, expectedNames });
+              }
+            }
+
+            generations.sort(
+              (left, right) => Number(right.run.run_number) - Number(left.run.run_number),
+            );
+            const retained = generations.slice(0, 3);
+            const retainedByRun = new Map(
+              retained.map(({ run, expectedNames }) => [Number(run.id), new Set(expectedNames)]),
+            );
+            const deletions = [];
+            const stagingNames = new Set([
+              "Unity-StandaloneLinux64",
+              "Unity-StandaloneWindows64",
+            ]);
+            const nightlyNamePattern =
+              /^Nightly-[0-9a-f]{40}-(StandaloneLinux64|StandaloneWindows64)-attempt-[1-9][0-9]*$/;
+
+            for (const { run, artifacts } of inventories) {
+              const retainedNames = retainedByRun.get(Number(run.id));
+              for (const artifact of artifacts) {
+                if (artifact.expired) {
+                  continue;
+                }
+                if (artifact.name.startsWith("Nightly-") && !nightlyNamePattern.test(artifact.name)) {
+                  throw new Error("Unexpected Nightly artifact name on run " + run.id + "; refusing deletion.");
+                }
+                if (stagingNames.has(artifact.name)) {
+                  deletions.push({ runId: Number(run.id), artifactId: artifact.id });
+                } else if (
+                  nightlyNamePattern.test(artifact.name) &&
+                  (!retainedNames || !retainedNames.has(artifact.name))
+                ) {
+                  deletions.push({ runId: Number(run.id), artifactId: artifact.id });
+                }
+              }
+            }
+
+            core.info(
+              "Retaining " + retained.length + " complete generation(s): " +
+                retained.map(({ run }) => String(run.run_number) + "/" + run.head_sha).join(", "),
+            );
+            core.info("Deleting " + deletions.length + " matching staging or stale Nightly artifact(s).");
+
+            for (const item of deletions) {
+              await github.rest.actions.deleteArtifact({
+                owner,
+                repo,
+                artifact_id: item.artifactId,
+              });
+            }
