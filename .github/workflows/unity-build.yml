@@ -18,9 +18,10 @@ jobs:
   build:
     # This workflow passes repository secrets to build code. Same-repository
     # PR callers are trusted; fork PRs and pull_request_target callers are not.
-    # Manual dispatch and branch events are main-only; version tags are only
-    # allowed for release events. Exclude this workflow's own path from the
-    # reusable-caller branch so direct dispatches cannot use the wider policy.
+    # Direct and reusable manual dispatches are main-only. Branch and release
+    # refs use their event-specific rules below. Exclude this workflow's own
+    # path from reusable-caller checks so direct dispatches cannot use the
+    # wider policy.
     if: >-
       github.repository == 'kurone-kito/DDMMHBC' &&
       (
