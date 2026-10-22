@@ -1,0 +1,193 @@
+name: Publish release builds
+
+# cspell:ignore rglob isfile
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+jobs:
+  validate-release-tag:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require a version tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          case "$RELEASE_TAG" in
+            v*) ;;
+            *)
+              echo 'Published releases must use a v-prefixed tag.' >&2
+              exit 1
+              ;;
+          esac
+
+  build-release:
+    needs: validate-release-tag
+    permissions:
+      contents: read
+    uses: ./.github/workflows/unity-build.yml
+    secrets:
+      UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+  publish-release:
+    needs: build-release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows player
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: Unity-StandaloneWindows64
+          path: ${{ runner.temp }}/release-windows
+
+      - name: Download Linux player archive
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: Unity-StandaloneLinux64
+          path: ${{ runner.temp }}/release-linux
+
+      - name: Verify and package release builds
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import sys
+          import tarfile
+          import zipfile
+          from pathlib import Path, PurePosixPath
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          windows_dir = root / "release-windows"
+          linux_artifact = root / "release-linux" / "StandaloneLinux64.tar.gz"
+          windows_archive = root / "DDMMHBC-Windows.zip"
+          linux_player = "StandaloneLinux64/DDMMHBC.x86_64"
+          linux_data_prefix = "StandaloneLinux64/DDMMHBC_Data/"
+          linux_player_library = "StandaloneLinux64/UnityPlayer.so"
+
+          def fail(message):
+              print(message, file=sys.stderr)
+              raise SystemExit(1)
+
+          def sensitive_name(name):
+              lowered = [part.lower() for part in PurePosixPath(name).parts]
+              suffixes = (".ulf", ".alf", ".lic", ".p12", ".pfx", ".pem", ".key")
+              terms = ("license", "credential", "secret", "password")
+              return any(
+                  part.endswith(suffix) for part in lowered for suffix in suffixes
+              ) or any(term in part for part in lowered for term in terms)
+
+          def safe_linux_member_path(name):
+              if "\\" in name:
+                  return None
+              path = PurePosixPath(name)
+              if (
+                  not path.parts
+                  or path.is_absolute()
+                  or ".." in path.parts
+                  or path.parts[0].endswith(":")
+              ):
+                  return None
+              return path.as_posix()
+
+          windows_exe = windows_dir / "DDMMHBC.exe"
+          windows_data = windows_dir / "DDMMHBC_Data"
+          if not windows_exe.is_file() or not windows_data.is_dir():
+              fail("Windows build is missing DDMMHBC.exe or DDMMHBC_Data.")
+          if not (windows_dir / "UnityPlayer.dll").is_file():
+              fail("Windows build is missing UnityPlayer.dll.")
+
+          windows_files = sorted(
+              path for path in windows_dir.rglob("*") if path.is_file()
+          )
+          if not windows_files:
+              fail("Windows build artifact is empty.")
+          if any(
+              sensitive_name(path.relative_to(windows_dir).as_posix())
+              for path in windows_files
+          ):
+              fail("Windows build contains a credential or license filename.")
+
+          if not linux_artifact.is_file():
+              fail("Linux build artifact is missing StandaloneLinux64.tar.gz.")
+          try:
+              with tarfile.open(linux_artifact, "r:gz") as archive:
+                  members = archive.getmembers()
+          except (OSError, tarfile.TarError) as error:
+              fail(f"Linux build archive is unreadable: {error}")
+
+          normalized_members = []
+          for member in members:
+              normalized_name = safe_linux_member_path(member.name)
+              if normalized_name is None:
+                  fail("Linux build archive contains an unsafe path.")
+              if not (member.isfile() or member.isdir()):
+                  fail("Linux build archive contains an unsupported entry type.")
+              normalized_members.append((member, normalized_name))
+
+          member_names = [name for _, name in normalized_members]
+          if any(sensitive_name(name) for name in member_names):
+              fail("Linux build contains a credential or license filename.")
+          executable = next(
+              (member for member, name in normalized_members
+               if name == linux_player
+               and member.isfile() and member.mode & 0o111),
+              None,
+          )
+          if executable is None:
+              fail("Linux build archive is missing executable DDMMHBC.x86_64.")
+          if not any(
+              member.isfile()
+              and name.startswith(linux_data_prefix)
+              for member, name in normalized_members
+          ):
+              fail("Linux build archive is missing DDMMHBC_Data runtime files.")
+          if not any(
+              name == linux_player_library and member.isfile()
+              for member, name in normalized_members
+          ):
+              fail("Linux build archive is missing UnityPlayer.so.")
+
+          with zipfile.ZipFile(
+              windows_archive,
+              "w",
+              compression=zipfile.ZIP_DEFLATED,
+              compresslevel=1,
+          ) as output:
+              for path in windows_files:
+                  output.write(path, path.relative_to(windows_dir).as_posix())
+
+          with zipfile.ZipFile(windows_archive) as archive:
+              bad_member = archive.testzip()
+              if bad_member is not None:
+                  fail("Windows release archive failed its integrity check.")
+              names = archive.namelist()
+              if "DDMMHBC.exe" not in names or not any(
+                  name.startswith("DDMMHBC_Data/") for name in names
+              ):
+                  fail("Windows release archive is missing required player files.")
+              if any(sensitive_name(name) for name in names):
+                  fail("Windows release archive contains a credential or license filename.")
+
+          print("Verified Windows and Linux player archives; no credential or license filenames found.")
+          PY
+
+      - name: Attach release archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: >-
+          gh release upload "$RELEASE_TAG"
+          "$RUNNER_TEMP/DDMMHBC-Windows.zip"
+          "$RUNNER_TEMP/release-linux/StandaloneLinux64.tar.gz"
+          --repo "$GITHUB_REPOSITORY"
