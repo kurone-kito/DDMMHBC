@@ -21,12 +21,13 @@ permissions:
 
 jobs:
   build:
-    # This workflow passes repository secrets to build code. Same-repository
-    # PR callers are trusted; fork PRs and pull_request_target callers are not.
-    # Direct and reusable manual dispatches are main-only. Branch and release
-    # refs use their event-specific rules below. Exclude this workflow's own
-    # path from reusable-caller checks so its direct triggers cannot use the
-    # wider caller policy.
+    # This workflow passes repository secrets to build code. Reusable callers
+    # may use the existing same-repository PR trust policy; the direct PR route
+    # is limited to owner-authored and owner-triggered PRs. Fork PRs and
+    # pull_request_target callers remain excluded. Direct and reusable manual
+    # dispatches are main-only. Branch and release refs use their event-specific
+    # rules below. Exclude this workflow's own path from reusable-caller checks
+    # so its direct triggers cannot use the wider caller policy.
     if: >-
       github.repository == 'kurone-kito/DDMMHBC' &&
       (
@@ -37,6 +38,8 @@ jobs:
         ) ||
         (
           github.event_name == 'pull_request' &&
+          github.actor == github.repository_owner &&
+          github.event.pull_request.user.login == github.repository_owner &&
           github.workflow_ref == format('kurone-kito/DDMMHBC/.github/workflows/unity-build.yml@{0}', github.ref) &&
           github.event.pull_request.base.repo.full_name == 'kurone-kito/DDMMHBC' &&
           github.event.pull_request.base.ref == 'main' &&
