@@ -1,0 +1,14 @@
+name: Unity PR validation scaffold
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  scaffold:
+    if: ${{ github.event_name == '' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Explain the dispatch scaffold
+        run: echo "This workflow is an inert dispatch scaffold."
