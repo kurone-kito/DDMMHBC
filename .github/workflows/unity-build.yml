@@ -1,4 +1,4 @@
-name: Unity build bootstrap
+name: Unity build
 
 on:
   workflow_dispatch:
@@ -7,9 +7,40 @@ permissions:
   contents: read
 
 jobs:
-  inert:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-24.04
+  build:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/issue/12-ci-add-reusable-windows-linux-unity'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - targetPlatform: StandaloneLinux64
+            runner: ubuntu-24.04
+          - targetPlatform: StandaloneWindows64
+            runner: windows-2022
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     steps:
-      - name: Keep this scaffold inert until issue #12 implements it
-        run: 'true'
+      - name: Check out the selected revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Build Unity player
+        uses: game-ci/unity-builder@1d4ee0697f193f54668e98961d79907911f4b4f2 # v4.8.1
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: auto
+          targetPlatform: ${{ matrix.targetPlatform }}
+          buildsPath: build
+
+      - name: Upload platform build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: Unity-${{ matrix.targetPlatform }}
+          path: build/${{ matrix.targetPlatform }}
+          if-no-files-found: error
+          retention-days: 7
