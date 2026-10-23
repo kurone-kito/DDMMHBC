@@ -7,6 +7,10 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: unity-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   detect:
     name: Detect Unity-relevant changes
@@ -55,7 +59,7 @@ jobs:
 
             page_count="$(jq -er 'length' <<<"${page_json}")"
             seen_count=$((seen_count + page_count))
-            has_unity_path="$(jq -r 'def unity_path: startswith("Assets/") or startswith("Packages/") or startswith("ProjectSettings/") or startswith(".github/workflows/"); any(.[]; (.filename | unity_path) or ((.previous_filename // "") | unity_path))' <<<"${page_json}")"
+            has_unity_path="$(jq -r 'def unity_path: startswith("Assets/") or startswith("Packages/") or startswith("ProjectSettings/") or . == ".github/workflows/ci-unity.yml"; any(.[]; (.filename | unity_path) or ((.previous_filename // "") | unity_path))' <<<"${page_json}")"
 
             if [[ "${has_unity_path}" == "true" ]]; then
               unity=true
@@ -78,8 +82,10 @@ jobs:
   build:
     name: Build Windows and Linux players
     needs: detect
-    # Unity credentials enter PR-controlled build code, so retain the
-    # owner-only trust boundary used by the direct pull-request route.
+    # This limits routine licensed builds to owner-authored PRs. The workflow
+    # itself comes from the PR merge revision, so this is not a security
+    # boundary against repository writers. Keep write access limited to trusted
+    # users; GitHub withholds repository secrets from fork pull_request runs.
     if: >-
       needs.detect.outputs.unity == 'true' &&
       github.event.pull_request.base.repo.full_name == github.repository &&
