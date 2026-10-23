@@ -70,8 +70,8 @@ jobs:
           windows_dir = root / "release-windows"
           linux_artifact = root / "release-linux" / "StandaloneLinux64.tar.gz"
           windows_archive = root / "DDMMHBC-Windows.zip"
-          linux_player = "StandaloneLinux64/DDMMHBC.x86_64"
-          linux_data_prefix = "StandaloneLinux64/DDMMHBC_Data/"
+          linux_player = "StandaloneLinux64/StandaloneLinux64"
+          linux_data_prefix = "StandaloneLinux64/StandaloneLinux64_Data/"
           linux_player_library = "StandaloneLinux64/UnityPlayer.so"
 
           def fail(message):
@@ -99,10 +99,10 @@ jobs:
                   return None
               return path.as_posix()
 
-          windows_exe = windows_dir / "DDMMHBC.exe"
-          windows_data = windows_dir / "DDMMHBC_Data"
+          windows_exe = windows_dir / "StandaloneWindows64.exe"
+          windows_data = windows_dir / "StandaloneWindows64_Data"
           if not windows_exe.is_file() or not windows_data.is_dir():
-              fail("Windows build is missing DDMMHBC.exe or DDMMHBC_Data.")
+              fail("Windows build is missing StandaloneWindows64.exe or StandaloneWindows64_Data.")
           if not (windows_dir / "UnityPlayer.dll").is_file():
               fail("Windows build is missing UnityPlayer.dll.")
 
@@ -171,8 +171,8 @@ jobs:
               if bad_member is not None:
                   fail("Windows release archive failed its integrity check.")
               names = archive.namelist()
-              if "DDMMHBC.exe" not in names or not any(
-                  name.startswith("DDMMHBC_Data/") for name in names
+              if "StandaloneWindows64.exe" not in names or not any(
+                  name.startswith("StandaloneWindows64_Data/") for name in names
               ):
                   fail("Windows release archive is missing required player files.")
               if any(sensitive_name(name) for name in names):
