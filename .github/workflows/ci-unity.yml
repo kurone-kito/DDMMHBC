@@ -82,16 +82,12 @@ jobs:
   build:
     name: Build Windows and Linux players
     needs: detect
-    # This limits routine licensed builds to owner-authored PRs. The workflow
-    # itself comes from the PR merge revision, so this is not a security
-    # boundary against repository writers. Keep write access limited to trusted
-    # users; GitHub withholds repository secrets from fork pull_request runs.
+    # Same-repository writers are trusted to modify workflow definitions.
+    # GitHub withholds repository secrets from fork pull_request runs.
     if: >-
       needs.detect.outputs.unity == 'true' &&
       github.event.pull_request.base.repo.full_name == github.repository &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.actor == github.repository_owner &&
-      github.event.pull_request.user.login == github.repository_owner
+      github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
     uses: ./.github/workflows/unity-build.yml
