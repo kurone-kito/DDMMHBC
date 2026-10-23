@@ -13,6 +13,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/nightly.yml"
+      - ".github/workflows/unity-build.yml"
 
 permissions: {}
 
@@ -97,7 +98,7 @@ jobs:
               throw new Error("Current commit SHA is missing or invalid.");
             }
 
-            async function listAllPages(request, params, collectionKey) {
+            async function listAllPages(request, params, collectionKey, maxTotalExclusive) {
               const items = [];
               let expectedTotal;
               let page = 1;
@@ -113,6 +114,12 @@ jobs:
 
                 if (!Array.isArray(pageItems) || !Number.isInteger(total)) {
                   throw new Error("Incomplete " + collectionKey + " inventory response.");
+                }
+                if (maxTotalExclusive !== undefined && total >= maxTotalExclusive) {
+                  throw new Error(
+                    collectionKey + " inventory reached the " + maxTotalExclusive +
+                      "-result search cap; refusing to prune.",
+                  );
                 }
                 if (expectedTotal === undefined) {
                   expectedTotal = total;
@@ -133,11 +140,28 @@ jobs:
               return items;
             }
 
-            const runs = await listAllPages(
-              github.rest.actions.listWorkflowRuns,
-              { owner, repo, workflow_id: "nightly.yml", branch: "main" },
-              "workflow_runs",
-            );
+            // The created filter bounds this inventory to the artifact
+            // retention window. GitHub caps filtered workflow-run searches
+            // at 1,000 results, so fail closed if that cap is reached.
+            async function listRecentWorkflowRuns() {
+              const retentionWindowStart = Date.now() - 91 * 24 * 60 * 60 * 1000;
+              const runs = await listAllPages(
+                github.rest.actions.listWorkflowRuns,
+                {
+                  owner,
+                  repo,
+                  workflow_id: "nightly.yml",
+                  created: ">=" + new Date(retentionWindowStart).toISOString(),
+                },
+                "workflow_runs",
+                1000,
+              );
+              return runs.filter(
+                (run) => Date.parse(run.created_at) >= retentionWindowStart,
+              );
+            }
+
+            const runs = await listRecentWorkflowRuns();
 
             let currentRun = runs.find((run) => Number(run.id) === currentRunId);
             if (currentRun && currentRun.head_sha !== currentSha) {
@@ -182,29 +206,55 @@ jobs:
               inventories.push({ run, artifacts });
             }
 
+            const nightlyNamePattern =
+              /^Nightly-([0-9a-f]{40})-(StandaloneLinux64|StandaloneWindows64)-attempt-([1-9][0-9]*)$/;
             const generations = [];
             for (const inventory of inventories) {
               const { run, artifacts } = inventory;
               const isCurrent = Number(run.id) === currentRunId;
-              const runSucceeded = isCurrent
-                ? process.env.BUILD_RESULT === "success" &&
-                  process.env.PUBLISH_RESULT === "success"
-                : run.conclusion === "success";
-              if (!runSucceeded) {
-                continue;
-              }
-
               if (!/^[0-9a-f]{40}$/.test(run.head_sha) || !Number.isInteger(Number(run.run_attempt))) {
                 throw new Error("Run " + run.id + " has invalid generation metadata.");
               }
-              const expectedNames = platforms.map(
-                (platform) =>
-                  "Nightly-" + run.head_sha + "-" + platform + "-attempt-" + run.run_attempt,
-              );
               const availableNames = new Set(
                 artifacts.filter((artifact) => !artifact.expired).map((artifact) => artifact.name),
               );
-              if (expectedNames.every((name) => availableNames.has(name))) {
+              const attempts = new Set();
+              for (const name of availableNames) {
+                const match = name.match(nightlyNamePattern);
+                if (match && match[1] === run.head_sha) {
+                  const attempt = Number(match[3]);
+                  if (!Number.isSafeInteger(attempt)) {
+                    throw new Error("Run " + run.id + " has invalid artifact attempt metadata.");
+                  }
+                  attempts.add(attempt);
+                }
+              }
+
+              const completeAttempts = [...attempts]
+                .filter((attempt) =>
+                  platforms.every((platform) =>
+                    availableNames.has(
+                      "Nightly-" + run.head_sha + "-" + platform + "-attempt-" + attempt,
+                    ),
+                  ),
+                )
+                .sort((left, right) => right - left);
+              const currentBuildAndPublishSucceeded =
+                isCurrent &&
+                process.env.BUILD_RESULT === "success" &&
+                process.env.PUBLISH_RESULT === "success";
+              if (
+                currentBuildAndPublishSucceeded &&
+                completeAttempts.length === 0
+              ) {
+                throw new Error("Current successful publish is missing a complete Nightly artifact pair.");
+              }
+              if (completeAttempts.length > 0) {
+                const selectedAttempt = completeAttempts[0];
+                const expectedNames = platforms.map(
+                  (platform) =>
+                    "Nightly-" + run.head_sha + "-" + platform + "-attempt-" + selectedAttempt,
+                );
                 generations.push({ run, expectedNames });
               }
             }
@@ -221,9 +271,6 @@ jobs:
               "Unity-StandaloneLinux64",
               "Unity-StandaloneWindows64",
             ]);
-            const nightlyNamePattern =
-              /^Nightly-[0-9a-f]{40}-(StandaloneLinux64|StandaloneWindows64)-attempt-[1-9][0-9]*$/;
-
             for (const { run, artifacts } of inventories) {
               const retainedNames = retainedByRun.get(Number(run.id));
               for (const artifact of artifacts) {
@@ -234,6 +281,10 @@ jobs:
                   throw new Error("Unexpected Nightly artifact name on run " + run.id + "; refusing deletion.");
                 }
                 if (stagingNames.has(artifact.name)) {
+                  const isCurrentRun = Number(run.id) === currentRunId;
+                  if (isCurrentRun && process.env.PUBLISH_RESULT !== "success") {
+                    continue;
+                  }
                   deletions.push({ runId: Number(run.id), artifactId: artifact.id });
                 } else if (
                   nightlyNamePattern.test(artifact.name) &&
