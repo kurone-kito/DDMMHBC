@@ -186,8 +186,104 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: >-
-          gh release upload "$RELEASE_TAG"
-          "$RUNNER_TEMP/DDMMHBC-Windows.zip"
-          "$RUNNER_TEMP/release-linux/StandaloneLinux64.tar.gz"
-          --repo "$GITHUB_REPOSITORY"
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          repo = os.environ["GH_REPO"]
+          tag = os.environ["RELEASE_TAG"]
+          root = Path(os.environ["RUNNER_TEMP"])
+          expected_assets = [
+              ("DDMMHBC-Windows.zip", root / "DDMMHBC-Windows.zip"),
+              (
+                  "StandaloneLinux64.tar.gz",
+                  root / "release-linux" / "StandaloneLinux64.tar.gz",
+              ),
+          ]
+
+          def fail(message):
+              print(message, file=sys.stderr)
+              raise SystemExit(1)
+
+          def run_gh(*args):
+              result = subprocess.run(
+                  ["gh", *args], capture_output=True, check=False, text=True
+              )
+              if result.returncode != 0:
+                  if result.stderr.strip():
+                      print(result.stderr.rstrip(), file=sys.stderr)
+                  else:
+                      print(
+                          f"GitHub CLI command failed with exit code {result.returncode}.",
+                          file=sys.stderr,
+                      )
+                  raise SystemExit(result.returncode)
+              return result.stdout
+
+          def sha256(path):
+              digest = hashlib.sha256()
+              with path.open("rb") as artifact:
+                  for chunk in iter(lambda: artifact.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return f"sha256:{digest.hexdigest()}"
+
+          release = json.loads(
+              run_gh("api", f"repos/{repo}/releases/tags/{tag}")
+          )
+          release_id = release.get("id")
+          if type(release_id) is not int:
+              fail("Could not determine the release ID for asset reconciliation.")
+
+          asset_pages = json.loads(
+              run_gh(
+                  "api",
+                  "--paginate",
+                  "--slurp",
+                  f"repos/{repo}/releases/{release_id}/assets?per_page=100",
+              )
+          )
+          if type(asset_pages) is not list or any(
+              type(page) is not list for page in asset_pages
+          ):
+              fail("GitHub returned an unexpected release asset listing.")
+          release_assets = [asset for page in asset_pages for asset in page]
+
+          uploads = []
+          for name, path in expected_assets:
+              if not path.is_file():
+                  fail(f"Expected release asset file is missing: {name}")
+              matches = [asset for asset in release_assets if asset.get("name") == name]
+              if len(matches) > 1:
+                  fail(f"Release contains multiple assets named {name}; refusing to upload.")
+              if not matches:
+                  uploads.append(path)
+                  continue
+
+              existing = matches[0]
+              if existing.get("state") != "uploaded" or existing.get("digest") != sha256(path):
+                  fail(
+                      f"Release already contains a different or unverified {name}; "
+                      "refusing to overwrite it."
+                  )
+              print(f"Reusing matching release asset: {name}")
+
+          if uploads:
+              run_gh(
+                  "release",
+                  "upload",
+                  tag,
+                  *(str(path) for path in uploads),
+                  "--repo",
+                  repo,
+              )
+              print(f"Uploaded {len(uploads)} missing release asset(s).")
+          else:
+              print("Both release assets already match; no upload was needed.")
+          PY
