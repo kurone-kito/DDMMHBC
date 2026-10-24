@@ -1,14 +1,97 @@
-name: Unity PR validation scaffold
+name: Unity pull request validation
 
 on:
-  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
 
 permissions: {}
 
+concurrency:
+  group: unity-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
-  scaffold:
-    if: ${{ github.event_name == '' }}
+  detect:
+    name: Detect Unity-relevant changes
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      unity: ${{ steps.paths.outputs.unity }}
     steps:
-      - name: Explain the dispatch scaffold
-        run: echo "This workflow is an inert dispatch scaffold."
+      - name: Detect changed paths without checking out PR code
+        id: paths
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          api_root="https://api.github.com/repos/${GH_REPOSITORY}"
+          curl_headers=(
+            -H "Authorization: Bearer ${GH_TOKEN}"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+
+          metadata="$(curl --connect-timeout 10 --max-time 30 --fail --silent --show-error "${curl_headers[@]}" \
+            "${api_root}/pulls/${PR_NUMBER}")"
+          expected_count="$(jq -er '.changed_files | select(type == "number")' \
+            <<<"${metadata}")"
+          if [[ ! "${expected_count}" =~ ^[0-9]+$ ]]; then
+            echo "::error::Pull request metadata has an invalid changed-file count."
+            exit 1
+          fi
+
+          page=1
+          seen_count=0
+          unity=false
+
+          while (( page <= 30 )); do
+            page_json="$(curl --connect-timeout 10 --max-time 30 --fail --silent --show-error "${curl_headers[@]}" \
+              "${api_root}/pulls/${PR_NUMBER}/files?per_page=100&page=${page}")"
+            jq -e 'type == "array" and all(.[]; (.filename | type) == "string" and (.previous_filename == null or (.previous_filename | type) == "string"))' \
+              <<<"${page_json}" >/dev/null
+
+            page_count="$(jq -er 'length' <<<"${page_json}")"
+            seen_count=$((seen_count + page_count))
+            has_unity_path="$(jq -r 'def unity_path: startswith("Assets/") or startswith("Packages/") or startswith("ProjectSettings/") or . == ".github/workflows/ci-unity.yml"; any(.[]; (.filename | unity_path) or ((.previous_filename // "") | unity_path))' <<<"${page_json}")"
+
+            if [[ "${has_unity_path}" == "true" ]]; then
+              unity=true
+              break
+            fi
+            if (( page_count < 100 )); then
+              break
+            fi
+            page=$((page + 1))
+          done
+
+          if [[ "${unity}" == "false" && "${seen_count}" -ne "${expected_count}" ]]; then
+            echo "::error::Could not verify the complete pull request file list."
+            exit 1
+          fi
+
+          echo "Unity-relevant changes: ${unity}"
+          printf 'unity=%s\n' "${unity}" >> "${GITHUB_OUTPUT}"
+
+  build:
+    name: Build Windows and Linux players
+    needs: detect
+    # Same-repository writers are trusted to modify workflow definitions.
+    # GitHub withholds repository secrets from fork pull_request runs.
+    if: >-
+      needs.detect.outputs.unity == 'true' &&
+      github.event.pull_request.base.repo.full_name == github.repository &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+    uses: ./.github/workflows/unity-build.yml
+    secrets:
+      UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
