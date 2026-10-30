@@ -26,6 +26,10 @@ The checks below stage the package in a temporary directory. The activation
 payload must be at `$XDG_DATA_HOME/idd-skill/current`; setting
 `XDG_DATA_HOME` to the payload directory itself does not select it.
 
+Run this complete block from the repository root in one POSIX-compatible
+shell session. The checks share the temporary staging path created at the
+start of the block.
+
 ```sh
 set -eu
 STAGE="$(mktemp -d)"
@@ -35,12 +39,8 @@ mkdir "$STAGE/package"
 tar -xzf "$STAGE/idd-skill.tar.gz" --strip-components=1 -C "$STAGE/package"
 mkdir -p "$STAGE/isolated-data/idd-skill"
 ln -s "$STAGE/package" "$STAGE/isolated-data/idd-skill/current"
-```
 
-Validate the repository policy with the schema and validator shipped in that
-exact package:
-
-```sh
+# Validate the repository policy with the schema and validator shipped in this package.
 PACKAGE_ROOT="$STAGE/package" REPO_ROOT="$(pwd)" node --input-type=module <<'NODE'
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -59,12 +59,8 @@ const errors = [
 if (errors.length) throw new Error(errors.join('\n'));
 console.log('PASS: repository policy validates against the pinned policy schema.');
 NODE
-```
 
-Compare the policy with `origin/main` after restoring only the two intended
-values in memory:
-
-```sh
+# Compare the policy with origin/main after normalizing only the two intended values.
 node --input-type=module <<'NODE'
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -82,22 +78,11 @@ normalized.helperRuntime.packageSpec = baseline.helperRuntime.packageSpec;
 assert.deepStrictEqual(normalized, baseline);
 console.log('PASS: all other policy values match origin/main.');
 NODE
-```
 
-Run activation with the isolated payload, inspect the effective local policy,
-and smoke-check the entry points from the staged package itself:
-
-```sh
+# Run activation, inspect the effective local policy, and smoke-check the staged entry points.
 XDG_DATA_HOME="$STAGE/isolated-data" node "$STAGE/package/bin/idd-activation.mjs" --cwd "$(pwd)"
 node "$STAGE/package/bin/idd-effective-config.mjs" --no-user-global
-for helper in \
-  idd-claim-issue \
-  idd-claimed-push \
-  idd-f4-worktree-branch-cleanup \
-  idd-load-gate \
-  idd-local-admission \
-  idd-publish-authoring-hold
-do
+for helper in idd-claim-issue idd-claimed-push idd-f4-worktree-branch-cleanup idd-load-gate idd-local-admission idd-publish-authoring-hold; do
   node "$STAGE/package/bin/$helper.mjs" --help
 done
 ```
