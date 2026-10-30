@@ -55,6 +55,11 @@ interim character artwork.
 - [Platforms and delivery](requirements/platforms-and-delivery.md) —
   [YAML record](knowledge/platforms-and-delivery.yml).
 
+## Development tooling
+
+- [IDD helper runtime](idd-runtime.md) — pinned helper and payload
+  compatibility checks.
+
 ## Other knowledge records
 
 - [DDMMHBC project overview example](knowledge/format-example.yml) — confirmed
