@@ -1,6 +1,6 @@
 {
   "$schema": "https://kurone-kito.github.io/idd-skill/schemas/policy.schema.json",
-  "iddVersion": "0.16.0",
+  "iddVersion": "0.17.0",
   "markerPrefix": "ddmmhbc",
   "developmentBranch": "main",
   "authoringLanguage": "en",
@@ -31,7 +31,7 @@
   "helperRuntime": {
     "profile": "ephemeral-npx",
     "launcher": "npx",
-    "packageSpec": "https://codeload.github.com/kurone-kito/idd-skill/tar.gz/e4d425ee28b1893dd45c4996b2506619018c4b2b"
+    "packageSpec": "https://codeload.github.com/kurone-kito/idd-skill/tar.gz/77befdd4030757464bed7f31c7dfe6d0a404a18b"
   },
   "issueScope": "roadmap-first",
   "orphanFirstPolicy": "none",
