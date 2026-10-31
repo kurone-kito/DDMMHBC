@@ -329,7 +329,10 @@ jobs:
                       or workflow_path.endswith("/.github/workflows/release.yml")
                   )
                   or workflow_run.get("event") != "push"
-                  or workflow_ref not in (tag, f"refs/tags/{tag}")
+                  or (
+                      workflow_ref is not None
+                      and workflow_ref not in (tag, f"refs/tags/{tag}")
+                  )
                   or head_branch not in (None, tag)
                   or workflow_run.get("head_sha") != source_sha
                   or type(run_repository) is not dict
