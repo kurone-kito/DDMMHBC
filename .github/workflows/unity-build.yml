@@ -94,6 +94,7 @@ jobs:
           unityVersion: auto
           targetPlatform: ${{ matrix.targetPlatform }}
           buildsPath: build
+          versioning: None
 
       - name: Verify build output is source-safe and secret-free
         env:
