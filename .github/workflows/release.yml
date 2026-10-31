@@ -81,6 +81,9 @@ jobs:
       - validate-release-tag
       - build-release
     runs-on: ubuntu-24.04
+    concurrency:
+      group: release-publish-${{ github.ref }}
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
