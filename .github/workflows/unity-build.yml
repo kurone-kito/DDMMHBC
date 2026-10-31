@@ -165,12 +165,25 @@ jobs:
             'Assets/Editor/UnityBuilderAction/Versioning/VersionGenerator.cs.meta',
           ]);
           const changes = status.stdout.split('\0').filter(Boolean);
-          if (changes.some((entry) => {
+          const unexpectedChanges = changes.filter((entry) => {
             const statusCode = entry.slice(0, 2);
             const changedPath = entry.slice(3);
             return !changedPath.startsWith('build/') &&
               !(statusCode === '??' && expectedGameCiFiles.has(changedPath));
-          })) {
+          });
+          if (unexpectedChanges.length > 0) {
+            for (const entry of unexpectedChanges) {
+              const statusCode = entry.slice(0, 2);
+              const changedPath = entry.slice(3);
+              const safePath = credentials.some((credential) =>
+                changedPath.includes(credential),
+              )
+                ? '[REDACTED PATH]'
+                : changedPath;
+              console.error(
+                `Unexpected Unity build workspace change (${statusCode}): ${JSON.stringify(safePath)}`,
+              );
+            }
             fail('The Unity build changed source files or wrote files outside build/.');
           }
 
