@@ -125,14 +125,51 @@ jobs:
 
           const status = spawnSync(
             'git',
-            ['status', '--porcelain=v1', '--untracked-files=all'],
+            ['status', '--porcelain=v1', '--untracked-files=all', '-z'],
             { encoding: 'utf8' },
           );
           if (status.error || status.status !== 0) {
             fail('Could not verify that the Unity build left source files unchanged.');
           }
-          const changes = status.stdout.split(/\r?\n/).filter(Boolean);
-          if (changes.some((line) => !line.slice(3).startsWith('build/'))) {
+
+          // The pinned GameCI action copies these default build scripts into
+          // Assets/Editor. Keep the allowlist exact so other source changes fail.
+          const expectedGameCiFiles = new Set([
+            'Assets/Editor/UnityBuilderAction.meta',
+            'Assets/Editor/UnityBuilderAction/Builder.cs',
+            'Assets/Editor/UnityBuilderAction/Builder.cs.meta',
+            'Assets/Editor/UnityBuilderAction/Input.meta',
+            'Assets/Editor/UnityBuilderAction/Input/AndroidSettings.cs',
+            'Assets/Editor/UnityBuilderAction/Input/AndroidSettings.cs.meta',
+            'Assets/Editor/UnityBuilderAction/Input/ArgumentsParser.cs',
+            'Assets/Editor/UnityBuilderAction/Input/ArgumentsParser.cs.meta',
+            'Assets/Editor/UnityBuilderAction/Reporting.meta',
+            'Assets/Editor/UnityBuilderAction/Reporting/CompileListener.cs',
+            'Assets/Editor/UnityBuilderAction/Reporting/CompileListener.cs.meta',
+            'Assets/Editor/UnityBuilderAction/Reporting/StdOutReporter.cs',
+            'Assets/Editor/UnityBuilderAction/Reporting/StdOutReporter.cs.meta',
+            'Assets/Editor/UnityBuilderAction/System.meta',
+            'Assets/Editor/UnityBuilderAction/System/ProcessExtensions.cs',
+            'Assets/Editor/UnityBuilderAction/System/ProcessExtensions.cs.meta',
+            'Assets/Editor/UnityBuilderAction/UnityBuilderAction.asmdef',
+            'Assets/Editor/UnityBuilderAction/UnityBuilderAction.asmdef.meta',
+            'Assets/Editor/UnityBuilderAction/Versioning.meta',
+            'Assets/Editor/UnityBuilderAction/Versioning/Git.cs',
+            'Assets/Editor/UnityBuilderAction/Versioning/Git.cs.meta',
+            'Assets/Editor/UnityBuilderAction/Versioning/GitException.cs',
+            'Assets/Editor/UnityBuilderAction/Versioning/GitException.cs.meta',
+            'Assets/Editor/UnityBuilderAction/Versioning/VersionApplicator.cs',
+            'Assets/Editor/UnityBuilderAction/Versioning/VersionApplicator.cs.meta',
+            'Assets/Editor/UnityBuilderAction/Versioning/VersionGenerator.cs',
+            'Assets/Editor/UnityBuilderAction/Versioning/VersionGenerator.cs.meta',
+          ]);
+          const changes = status.stdout.split('\0').filter(Boolean);
+          if (changes.some((entry) => {
+            const statusCode = entry.slice(0, 2);
+            const changedPath = entry.slice(3);
+            return !changedPath.startsWith('build/') &&
+              !(statusCode === '??' && expectedGameCiFiles.has(changedPath));
+          })) {
             fail('The Unity build changed source files or wrote files outside build/.');
           }
 

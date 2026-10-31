@@ -1,6 +1,6 @@
 name: Publish release builds
 
-# cspell:ignore rglob isfile
+# cspell:ignore rglob isfile isinstance
 
 on:
   push:
@@ -237,6 +237,7 @@ jobs:
           import hashlib
           import json
           import os
+          import re
           import subprocess
           import sys
           from pathlib import Path
@@ -253,6 +254,7 @@ jobs:
                   root / "release-linux" / "StandaloneLinux64.tar.gz",
               ),
           ]
+          asset_manifest_marker = "<!-- ddmmhbc-release-assets:v1 -->"
 
           def fail(message):
               print(message, file=sys.stderr)
@@ -293,22 +295,34 @@ jobs:
                   fail("Release source is no longer reachable from main.")
 
           def read_release():
-              return json.loads(
-                  run_gh("api", f"repos/{repo}/releases/tags/{tag}")
+              release_pages = json.loads(
+                  run_gh(
+                      "api",
+                      "--paginate",
+                      "--slurp",
+                      f"repos/{repo}/releases?per_page=100",
+                  )
               )
-
-          def verify_release(expected_draft):
-              release = read_release()
-              release_id = release.get("id")
+              if type(release_pages) is not list or any(
+                  type(page) is not list for page in release_pages
+              ):
+                  fail("GitHub returned an unexpected release listing.")
+              matching_releases = [
+                  release
+                  for page in release_pages
+                  for release in page
+                  if release.get("tag_name") == tag
+              ]
+              if len(matching_releases) > 1:
+                  fail("Multiple releases use the pushed version tag.")
+              if not matching_releases:
+                  return None
+              release_id = matching_releases[0].get("id")
               if type(release_id) is not int:
-                  fail("Could not determine the release ID for asset verification.")
-              if release.get("tag_name") != tag:
-                  fail("Release tag does not match the pushed version tag.")
-              if release.get("draft") is not expected_draft:
-                  fail("Release draft state does not match the expected publication phase.")
-              if release.get("prerelease") is not expected_prerelease:
-                  fail("Release prerelease state does not match its version tag.")
+                  fail("Could not determine the release ID for the pushed tag.")
+              return json.loads(run_gh("api", f"repos/{repo}/releases/{release_id}"))
 
+          def release_assets(release_id):
               asset_pages = json.loads(
                   run_gh(
                       "api",
@@ -321,21 +335,84 @@ jobs:
                   type(page) is not list for page in asset_pages
               ):
                   fail("GitHub returned an unexpected release asset listing.")
-              release_assets = [asset for page in asset_pages for asset in page]
+              return [asset for page in asset_pages for asset in page]
+
+          def read_asset_manifest(release):
+              body = release.get("body")
+              if not isinstance(body, str) or asset_manifest_marker not in body:
+                  return None
+              if body.count(asset_manifest_marker) != 1:
+                  fail("Release contains multiple asset digest manifests.")
+              manifest_body = body.split(asset_manifest_marker, 1)[1].strip()
+              manifest = {}
+              for line in manifest_body.splitlines():
+                  match = re.fullmatch(r"([^=\n]+)=sha256:([0-9a-f]{64})", line)
+                  if match is None or match.group(1) in manifest:
+                      fail("Release asset digest manifest is malformed.")
+                  manifest[match.group(1)] = f"sha256:{match.group(2)}"
               expected_names = {name for name, _ in expected_assets}
-              if {asset.get("name") for asset in release_assets} != expected_names:
+              if set(manifest) != expected_names:
+                  fail("Release asset digest manifest does not list the expected archives.")
+              return manifest
+
+          def write_asset_manifest(release, digests):
+              release_id = validate_release(release, expected_draft=True)
+              body = release.get("body")
+              if not isinstance(body, str) or asset_manifest_marker in body:
+                  fail("Draft release cannot safely record its asset digest manifest.")
+              entries = [f"{name}={digests[name]}" for name, _ in expected_assets]
+              notes = body.rstrip()
+              if notes:
+                  notes += "\n\n"
+              notes += asset_manifest_marker + "\n" + "\n".join(entries) + "\n"
+              run_gh(
+                  "api",
+                  f"repos/{repo}/releases/{release_id}",
+                  "--method",
+                  "PATCH",
+                  "-f",
+                  f"body={notes}",
+              )
+
+          def validate_release(release, expected_draft):
+              if type(release) is not dict:
+                  fail("Could not read the release for the pushed version tag.")
+              release_id = release.get("id")
+              if type(release_id) is not int:
+                  fail("Could not determine the release ID for asset verification.")
+              if release.get("tag_name") != tag:
+                  fail("Release tag does not match the pushed version tag.")
+              if release.get("draft") is not expected_draft:
+                  fail("Release draft state does not match the expected publication phase.")
+              if release.get("prerelease") is not expected_prerelease:
+                  fail("Release prerelease state does not match its version tag.")
+              return release_id
+
+          def verify_release(release, expected_draft, expected_digests):
+              release_id = validate_release(release, expected_draft)
+              if not expected_draft and release.get("immutable") is not True:
+                  fail("Published release is not immutable; refusing to trust its asset manifest.")
+              manifest = read_asset_manifest(release)
+              if manifest is not None and manifest != expected_digests:
+                  fail("Release asset digest manifest does not match the expected digests.")
+              assets = release_assets(release_id)
+              expected_names = {name for name, _ in expected_assets}
+              if {asset.get("name") for asset in assets} != expected_names:
                   fail("Release does not contain exactly the two expected archives.")
-              if len(release_assets) != len(expected_assets):
+              if len(assets) != len(expected_assets):
                   fail("Release contains duplicate or unexpected archive assets.")
 
               for name, path in expected_assets:
                   if not path.is_file():
                       fail(f"Expected release asset file is missing: {name}")
-                  matches = [asset for asset in release_assets if asset.get("name") == name]
+                  matches = [asset for asset in assets if asset.get("name") == name]
                   if len(matches) != 1:
                       fail(f"Release must contain exactly one {name} asset.")
                   asset = matches[0]
-                  if asset.get("state") != "uploaded" or asset.get("digest") != sha256(path):
+                  if (
+                      asset.get("state") != "uploaded"
+                      or asset.get("digest") != expected_digests.get(name)
+                  ):
                       fail(f"Release asset is incomplete or has an unexpected digest: {name}")
               return release
 
@@ -344,32 +421,105 @@ jobs:
                   fail(f"Expected release asset file is missing: {path.name}")
 
           resolve_tag_commit()
-          prerelease_args = ["--prerelease"] if expected_prerelease else []
-          run_gh(
-              "release",
-              "create",
-              tag,
-              "--draft",
-              "--verify-tag",
-              "--target",
-              source_sha,
-              "--generate-notes",
-              *prerelease_args,
-              "--repo",
-              repo,
+          release = read_release()
+          if release is None:
+              prerelease_args = ["--prerelease"] if expected_prerelease else []
+              run_gh(
+                  "release",
+                  "create",
+                  tag,
+                  "--draft",
+                  "--verify-tag",
+                  "--target",
+                  source_sha,
+                  "--generate-notes",
+                  *prerelease_args,
+                  "--repo",
+                  repo,
+              )
+              release = read_release()
+
+          if release is None:
+              fail("Release creation succeeded but the release is not visible yet.")
+
+          if release.get("draft") is not True:
+              manifest = read_asset_manifest(release)
+              if manifest is None:
+                  fail("Published release has no verified asset digest manifest.")
+              resolve_tag_commit()
+              verify_release(release, expected_draft=False, expected_digests=manifest)
+              resolve_tag_commit()
+              print("The published release already contains the verified archives.")
+              raise SystemExit(0)
+
+          release_id = validate_release(release, expected_draft=True)
+          manifest = read_asset_manifest(release)
+          expected_digests = manifest or {
+              name: sha256(path) for name, path in expected_assets
+          }
+          assets = release_assets(release_id)
+          expected_names = {name for name, _ in expected_assets}
+          if any(asset.get("name") not in expected_names for asset in assets):
+              fail("Draft release contains an unexpected asset; refusing to replace it.")
+          if len({asset.get("name") for asset in assets}) != len(assets):
+              fail("Draft release contains duplicate assets; refusing to replace them.")
+
+          uploads = []
+          for name, path in expected_assets:
+              matches = [asset for asset in assets if asset.get("name") == name]
+              if not matches:
+                  if manifest is not None and sha256(path) != expected_digests[name]:
+                      fail(
+                          f"Missing {name} cannot be recreated with its recorded digest."
+                      )
+                  uploads.append(path)
+                  continue
+              asset = matches[0]
+              if (
+                  asset.get("state") != "uploaded"
+                  or asset.get("digest") != expected_digests[name]
+              ):
+                  fail(f"Draft release contains a conflicting {name}; refusing to replace it.")
+              print(f"Reusing matching release asset: {name}")
+
+          if uploads:
+              run_gh(
+                  "release",
+                  "upload",
+                  tag,
+                  *(str(path) for path in uploads),
+                  "--repo",
+                  repo,
+              )
+              print(f"Uploaded {len(uploads)} missing release asset(s).")
+          else:
+              print("Both release assets already match; no upload was needed.")
+
+          release = read_release()
+          verify_release(
+              release,
+              expected_draft=True,
+              expected_digests=expected_digests,
           )
-          run_gh(
-              "release",
-              "upload",
-              tag,
-              *(str(path) for _, path in expected_assets),
-              "--repo",
-              repo,
-          )
-          verify_release(expected_draft=True)
+          if manifest is None:
+              write_asset_manifest(release, expected_digests)
+              release = read_release()
+              manifest = read_asset_manifest(release)
+              if manifest != expected_digests:
+                  fail("Could not verify the recorded release asset digest manifest.")
+              verify_release(
+                  release,
+                  expected_draft=True,
+                  expected_digests=expected_digests,
+              )
           resolve_tag_commit()
           run_gh("release", "edit", tag, "--draft=false", "--repo", repo)
-          verify_release(expected_draft=False)
+          release = read_release()
+          verify_release(
+              release,
+              expected_draft=False,
+              expected_digests=expected_digests,
+          )
           resolve_tag_commit()
           print("Published the verified Windows and Linux release archives.")
           PY
