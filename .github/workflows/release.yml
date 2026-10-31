@@ -3,9 +3,9 @@ name: Publish release builds
 # cspell:ignore rglob isfile
 
 on:
-  release:
-    types:
-      - published
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
@@ -13,18 +13,58 @@ permissions:
 jobs:
   validate-release-tag:
     runs-on: ubuntu-24.04
+    outputs:
+      prerelease: ${{ steps.validate.outputs.prerelease }}
     steps:
-      - name: Require a version tag
+      - id: validate
+        name: Validate trusted version tag
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_SHA: ${{ github.sha }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          PUSH_ACTOR: ${{ github.actor }}
         run: |
           case "$RELEASE_TAG" in
             v*) ;;
             *)
-              echo 'Published releases must use a v-prefixed tag.' >&2
+              echo 'Release tags must start with v.' >&2
               exit 1
               ;;
           esac
+          if [ "$PUSH_ACTOR" != "$REPOSITORY_OWNER" ]; then
+            echo 'Only the repository owner may start a release build.' >&2
+            exit 1
+          fi
+          stable_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          prerelease_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)$'
+          if [[ "$RELEASE_TAG" =~ $stable_pattern ]]; then
+            prerelease=false
+          elif [[ "$RELEASE_TAG" =~ $prerelease_pattern ]]; then
+            prerelease=true
+          else
+            echo 'Release tags must use vMAJOR.MINOR.PATCH with an optional prerelease suffix.' >&2
+            exit 1
+          fi
+          if ! [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo 'The pushed source SHA is missing or invalid.' >&2
+            exit 1
+          fi
+          tag_sha="$(gh api "repos/${GH_REPO}/commits/${RELEASE_TAG}" --jq '.sha')"
+          if [ "$tag_sha" != "$RELEASE_SHA" ]; then
+            echo 'The release tag no longer resolves to the pushed source SHA.' >&2
+            exit 1
+          fi
+          comparison_status="$(gh api "repos/${GH_REPO}/compare/main...${RELEASE_SHA}" --jq '.status')"
+          case "$comparison_status" in
+            behind|identical) ;;
+            *)
+              echo 'The release source must be reachable from main.' >&2
+              exit 1
+              ;;
+          esac
+          printf 'prerelease=%s\n' "$prerelease" >> "$GITHUB_OUTPUT"
 
   build-release:
     needs: validate-release-tag
@@ -37,7 +77,9 @@ jobs:
       UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
 
   publish-release:
-    needs: build-release
+    needs:
+      - validate-release-tag
+      - build-release
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -185,7 +227,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_PRERELEASE: ${{ needs.validate-release-tag.outputs.prerelease }}
           RUNNER_TEMP: ${{ runner.temp }}
         run: |
           set -euo pipefail
@@ -199,6 +243,8 @@ jobs:
 
           repo = os.environ["GH_REPO"]
           tag = os.environ["RELEASE_TAG"]
+          source_sha = os.environ["RELEASE_SHA"]
+          expected_prerelease = os.environ["RELEASE_PRERELEASE"] == "true"
           root = Path(os.environ["RUNNER_TEMP"])
           expected_assets = [
               ("DDMMHBC-Windows.zip", root / "DDMMHBC-Windows.zip"),
@@ -234,56 +280,96 @@ jobs:
                       digest.update(chunk)
               return f"sha256:{digest.hexdigest()}"
 
-          release = json.loads(
-              run_gh("api", f"repos/{repo}/releases/tags/{tag}")
-          )
-          release_id = release.get("id")
-          if type(release_id) is not int:
-              fail("Could not determine the release ID for asset reconciliation.")
+          def resolve_tag_commit():
+              resolved = json.loads(
+                  run_gh("api", f"repos/{repo}/commits/{tag}")
+              ).get("sha")
+              if resolved != source_sha:
+                  fail("Release tag no longer resolves to the built source SHA.")
+              status = run_gh(
+                  "api", f"repos/{repo}/compare/main...{source_sha}", "--jq", ".status"
+              ).strip()
+              if status not in ("behind", "identical"):
+                  fail("Release source is no longer reachable from main.")
 
-          asset_pages = json.loads(
-              run_gh(
-                  "api",
-                  "--paginate",
-                  "--slurp",
-                  f"repos/{repo}/releases/{release_id}/assets?per_page=100",
+          def read_release():
+              return json.loads(
+                  run_gh("api", f"repos/{repo}/releases/tags/{tag}")
               )
-          )
-          if type(asset_pages) is not list or any(
-              type(page) is not list for page in asset_pages
-          ):
-              fail("GitHub returned an unexpected release asset listing.")
-          release_assets = [asset for page in asset_pages for asset in page]
 
-          uploads = []
-          for name, path in expected_assets:
-              if not path.is_file():
-                  fail(f"Expected release asset file is missing: {name}")
-              matches = [asset for asset in release_assets if asset.get("name") == name]
-              if len(matches) > 1:
-                  fail(f"Release contains multiple assets named {name}; refusing to upload.")
-              if not matches:
-                  uploads.append(path)
-                  continue
+          def verify_release(expected_draft):
+              release = read_release()
+              release_id = release.get("id")
+              if type(release_id) is not int:
+                  fail("Could not determine the release ID for asset verification.")
+              if release.get("tag_name") != tag:
+                  fail("Release tag does not match the pushed version tag.")
+              if release.get("draft") is not expected_draft:
+                  fail("Release draft state does not match the expected publication phase.")
+              if release.get("prerelease") is not expected_prerelease:
+                  fail("Release prerelease state does not match its version tag.")
 
-              existing = matches[0]
-              if existing.get("state") != "uploaded" or existing.get("digest") != sha256(path):
-                  fail(
-                      f"Release already contains a different or unverified {name}; "
-                      "refusing to overwrite it."
+              asset_pages = json.loads(
+                  run_gh(
+                      "api",
+                      "--paginate",
+                      "--slurp",
+                      f"repos/{repo}/releases/{release_id}/assets?per_page=100",
                   )
-              print(f"Reusing matching release asset: {name}")
-
-          if uploads:
-              run_gh(
-                  "release",
-                  "upload",
-                  tag,
-                  *(str(path) for path in uploads),
-                  "--repo",
-                  repo,
               )
-              print(f"Uploaded {len(uploads)} missing release asset(s).")
-          else:
-              print("Both release assets already match; no upload was needed.")
+              if type(asset_pages) is not list or any(
+                  type(page) is not list for page in asset_pages
+              ):
+                  fail("GitHub returned an unexpected release asset listing.")
+              release_assets = [asset for page in asset_pages for asset in page]
+              expected_names = {name for name, _ in expected_assets}
+              if {asset.get("name") for asset in release_assets} != expected_names:
+                  fail("Release does not contain exactly the two expected archives.")
+              if len(release_assets) != len(expected_assets):
+                  fail("Release contains duplicate or unexpected archive assets.")
+
+              for name, path in expected_assets:
+                  if not path.is_file():
+                      fail(f"Expected release asset file is missing: {name}")
+                  matches = [asset for asset in release_assets if asset.get("name") == name]
+                  if len(matches) != 1:
+                      fail(f"Release must contain exactly one {name} asset.")
+                  asset = matches[0]
+                  if asset.get("state") != "uploaded" or asset.get("digest") != sha256(path):
+                      fail(f"Release asset is incomplete or has an unexpected digest: {name}")
+              return release
+
+          for _, path in expected_assets:
+              if not path.is_file():
+                  fail(f"Expected release asset file is missing: {path.name}")
+
+          resolve_tag_commit()
+          prerelease_args = ["--prerelease"] if expected_prerelease else []
+          run_gh(
+              "release",
+              "create",
+              tag,
+              "--draft",
+              "--verify-tag",
+              "--target",
+              source_sha,
+              "--generate-notes",
+              *prerelease_args,
+              "--repo",
+              repo,
+          )
+          run_gh(
+              "release",
+              "upload",
+              tag,
+              *(str(path) for _, path in expected_assets),
+              "--repo",
+              repo,
+          )
+          verify_release(expected_draft=True)
+          resolve_tag_commit()
+          run_gh("release", "edit", tag, "--draft=false", "--repo", repo)
+          verify_release(expected_draft=False)
+          resolve_tag_commit()
+          print("Published the verified Windows and Linux release archives.")
           PY

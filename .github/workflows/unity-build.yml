@@ -25,7 +25,7 @@ jobs:
     # may use the existing same-repository PR trust policy; the direct PR route
     # is limited to owner-authored and owner-triggered PRs. Fork PRs and
     # pull_request_target callers remain excluded. Direct and reusable manual
-    # dispatches are main-only. Branch and release refs use their event-specific
+    # dispatches are main-only. Branch and tag refs use their event-specific
     # rules below. Exclude this workflow's own path from reusable-caller checks
     # so its direct triggers cannot use the wider caller policy.
     if: >-
@@ -50,6 +50,12 @@ jobs:
           (
             (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
             (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+            (
+              github.event_name == 'push' &&
+              startsWith(github.ref, 'refs/tags/v') &&
+              github.actor == github.repository_owner &&
+              github.workflow_ref == format('kurone-kito/DDMMHBC/.github/workflows/release.yml@{0}', github.ref)
+            ) ||
             (github.event_name == 'schedule' && github.ref == 'refs/heads/main') ||
             (github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v')) ||
             (
@@ -88,6 +94,104 @@ jobs:
           unityVersion: auto
           targetPlatform: ${{ matrix.targetPlatform }}
           buildsPath: build
+
+      - name: Verify build output is source-safe and secret-free
+        env:
+          TARGET_PLATFORM: ${{ matrix.targetPlatform }}
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const { spawnSync } = require('node:child_process');
+
+          function fail(message) {
+            console.error(message);
+            process.exit(1);
+          }
+
+          const credentials = [
+            process.env.UNITY_LICENSE,
+            process.env.UNITY_EMAIL,
+            process.env.UNITY_PASSWORD,
+          ];
+          if (credentials.some((value) => typeof value !== 'string' || value.length === 0)) {
+            fail('A required Unity credential is unavailable for output verification.');
+          }
+
+          const status = spawnSync(
+            'git',
+            ['status', '--porcelain=v1', '--untracked-files=all'],
+            { encoding: 'utf8' },
+          );
+          if (status.error || status.status !== 0) {
+            fail('Could not verify that the Unity build left source files unchanged.');
+          }
+          const changes = status.stdout.split(/\r?\n/).filter(Boolean);
+          if (changes.some((line) => !line.slice(3).startsWith('build/'))) {
+            fail('The Unity build changed source files or wrote files outside build/.');
+          }
+
+          const buildRoot = path.resolve('build');
+          const outputRoot = path.join(buildRoot, process.env.TARGET_PLATFORM);
+          let buildRootInfo;
+          let outputRootInfo;
+          try {
+            buildRootInfo = fs.lstatSync(buildRoot);
+            outputRootInfo = fs.lstatSync(outputRoot);
+          } catch {
+            fail('The Unity build output directory is missing.');
+          }
+          if (
+            buildRootInfo.isSymbolicLink() ||
+            !buildRootInfo.isDirectory() ||
+            outputRootInfo.isSymbolicLink() ||
+            !outputRootInfo.isDirectory()
+          ) {
+            fail('The Unity build output directory is missing or unsafe.');
+          }
+
+          const secretBytes = credentials.map((value) => Buffer.from(value, 'utf8'));
+          const carrySize = Math.max(...secretBytes.map((value) => value.length)) - 1;
+
+          async function* filesUnder(directory) {
+            for (const entry of await fs.promises.readdir(directory, { withFileTypes: true })) {
+              const entryPath = path.join(directory, entry.name);
+              if (entry.isDirectory()) {
+                yield* filesUnder(entryPath);
+              } else if (entry.isSymbolicLink()) {
+                fail('The Unity build output contains a symbolic link.');
+              } else if (entry.isFile()) {
+                yield entryPath;
+              }
+            }
+          }
+
+          async function containsCredential(filePath) {
+            let carry = Buffer.alloc(0);
+            for await (const chunk of fs.createReadStream(filePath)) {
+              const data = carry.length === 0 ? chunk : Buffer.concat([carry, chunk]);
+              if (secretBytes.some((secret) => data.includes(secret))) {
+                return true;
+              }
+              carry = data.subarray(Math.max(0, data.length - carrySize));
+            }
+            return false;
+          }
+
+          (async () => {
+            for await (const filePath of filesUnder(outputRoot)) {
+              if (await containsCredential(filePath)) {
+                fail('The Unity build output contains a configured credential value.');
+              }
+            }
+            console.log('Verified source-safe, credential-free Unity build output.');
+          })().catch(() => fail('Could not verify Unity build output contents.'));
+          NODE
 
       - name: Archive Linux player with permissions
         if: matrix.targetPlatform == 'StandaloneLinux64'
