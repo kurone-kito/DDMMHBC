@@ -85,6 +85,7 @@ jobs:
       group: release-publish-${{ github.ref }}
       cancel-in-progress: false
     permissions:
+      actions: read
       contents: write
     steps:
       - name: Download Windows player
@@ -257,7 +258,8 @@ jobs:
                   root / "release-linux" / "StandaloneLinux64.tar.gz",
               ),
           ]
-          asset_manifest_marker = "<!-- ddmmhbc-release-assets:v1 -->"
+          asset_manifest_marker = "<!-- ddmmhbc-release-assets:v2 -->"
+          legacy_asset_manifest_marker = "<!-- ddmmhbc-release-assets:v1 -->"
 
           def fail(message):
               print(message, file=sys.stderr)
@@ -284,6 +286,64 @@ jobs:
                   for chunk in iter(lambda: artifact.read(1024 * 1024), b""):
                       digest.update(chunk)
               return f"sha256:{digest.hexdigest()}"
+
+          def current_run_id():
+              run_id = os.environ.get("GITHUB_RUN_ID", "")
+              if not re.fullmatch(r"[1-9][0-9]*", run_id):
+                  fail("The release workflow run ID is missing or invalid.")
+              return int(run_id)
+
+          def validate_origin_run(run_id):
+              if type(run_id) is not int or run_id < 1:
+                  fail("Release asset manifest contains an invalid workflow run ID.")
+              if run_id == current_run_id():
+                  expected_workflow_ref = (
+                      f"{repo}/.github/workflows/release.yml@refs/tags/{tag}"
+                  )
+                  if (
+                      os.environ.get("GITHUB_EVENT_NAME") != "push"
+                      or os.environ.get("GITHUB_WORKFLOW_REF") != expected_workflow_ref
+                  ):
+                      fail("Current run is not the trusted release workflow for this tag.")
+                  return
+
+              workflow_run = json.loads(
+                  run_gh("api", f"repos/{repo}/actions/runs/{run_id}")
+              )
+              if type(workflow_run) is not dict:
+                  fail("Could not read the release asset's originating workflow run.")
+              workflow_path = workflow_run.get("path")
+              if isinstance(workflow_path, str):
+                  workflow_path = workflow_path.split("@", 1)[0]
+              run_repository = workflow_run.get("repository")
+              head_repository = workflow_run.get("head_repository")
+              if (
+                  not isinstance(workflow_path, str)
+                  or not (
+                      workflow_path == ".github/workflows/release.yml"
+                      or workflow_path.endswith("/.github/workflows/release.yml")
+                  )
+                  or workflow_run.get("event") != "push"
+                  or workflow_run.get("head_branch") != tag
+                  or workflow_run.get("head_sha") != source_sha
+                  or type(run_repository) is not dict
+                  or run_repository.get("full_name", "").lower() != repo.lower()
+                  or type(head_repository) is not dict
+                  or head_repository.get("full_name", "").lower() != repo.lower()
+              ):
+                  fail("Release asset manifest is not bound to this tag's workflow run.")
+
+          def validate_manifest_provenance(manifest):
+              if type(manifest) is not dict or manifest.get("source_sha") != source_sha:
+                  fail("Release asset digest manifest belongs to a different source SHA.")
+              assets = manifest.get("assets")
+              expected_names = {name for name, _ in expected_assets}
+              if type(assets) is not dict or set(assets) != expected_names:
+                  fail("Release asset digest manifest does not list the expected archives.")
+              for entry in assets.values():
+                  if type(entry) is not dict:
+                      fail("Release asset digest manifest entry is malformed.")
+                  validate_origin_run(entry.get("run_id"))
 
           def resolve_tag_commit():
               resolved = json.loads(
@@ -344,31 +404,52 @@ jobs:
               if type(release) is not dict:
                   fail("Could not read the release asset digest manifest.")
               body = release.get("body")
-              if not isinstance(body, str) or asset_manifest_marker not in body:
+              if not isinstance(body, str):
+                  return None
+              if legacy_asset_manifest_marker in body:
+                  fail("Legacy release digest manifest is not bound to a workflow run.")
+              if asset_manifest_marker not in body:
                   return None
               if body.count(asset_manifest_marker) != 1:
                   fail("Release contains multiple asset digest manifests.")
               manifest_body = body.split(asset_manifest_marker, 1)[1].strip()
-              manifest = {}
-              for line in manifest_body.splitlines():
-                  match = re.fullmatch(r"([^=\n]+)=sha256:([0-9a-f]{64})", line)
-                  if match is None or match.group(1) in manifest:
+              lines = manifest_body.splitlines()
+              if not lines:
+                  fail("Release asset digest manifest is malformed.")
+              source_match = re.fullmatch(r"source_sha=([0-9a-f]{40})", lines[0])
+              if source_match is None:
+                  fail("Release asset digest manifest is malformed.")
+              manifest = {"source_sha": source_match.group(1), "assets": {}}
+              for line in lines[1:]:
+                  match = re.fullmatch(
+                      r"([^=\n]+)=sha256:([0-9a-f]{64});run_id=([1-9][0-9]*)",
+                      line,
+                  )
+                  if match is None or match.group(1) in manifest["assets"]:
                       fail("Release asset digest manifest is malformed.")
-                  manifest[match.group(1)] = f"sha256:{match.group(2)}"
+                  manifest["assets"][match.group(1)] = {
+                      "digest": f"sha256:{match.group(2)}",
+                      "run_id": int(match.group(3)),
+                  }
               expected_names = {name for name, _ in expected_assets}
-              if set(manifest) != expected_names:
+              if set(manifest["assets"]) != expected_names:
                   fail("Release asset digest manifest does not list the expected archives.")
               return manifest
 
-          def write_asset_manifest(release, digests):
+          def write_asset_manifest(release, manifest):
               release_id = validate_release(release, expected_draft=True)
               body = release.get("body")
               if not isinstance(body, str):
                   fail("Draft release notes are missing; cannot record asset digests.")
               if body.count(asset_manifest_marker) > 1:
                   fail("Draft release contains multiple asset digest manifests.")
+              validate_manifest_provenance(manifest)
               notes = body.split(asset_manifest_marker, 1)[0].rstrip()
-              entries = [f"{name}={digests[name]}" for name, _ in expected_assets]
+              entries = [f"source_sha={manifest['source_sha']}"]
+              entries.extend(
+                  f"{name}={manifest['assets'][name]['digest']};run_id={manifest['assets'][name]['run_id']}"
+                  for name, _ in expected_assets
+              )
               if notes:
                   notes += "\n\n"
               notes += asset_manifest_marker + "\n" + "\n".join(entries) + "\n"
@@ -395,13 +476,12 @@ jobs:
                   fail("Release prerelease state does not match its version tag.")
               return release_id
 
-          def verify_release(release, expected_draft, expected_digests):
+          def verify_release(release, expected_draft, expected_manifest):
               release_id = validate_release(release, expected_draft)
-              if not expected_draft and release.get("immutable") is not True:
-                  fail("Published release is not immutable; refusing to trust its asset manifest.")
               manifest = read_asset_manifest(release)
-              if manifest is not None and manifest != expected_digests:
-                  fail("Release asset digest manifest does not match the expected digests.")
+              if manifest is None or manifest != expected_manifest:
+                  fail("Release asset digest manifest does not match the expected build.")
+              validate_manifest_provenance(manifest)
               assets = release_assets(release_id)
               expected_names = {name for name, _ in expected_assets}
               if {asset.get("name") for asset in assets} != expected_names:
@@ -418,7 +498,8 @@ jobs:
                   asset = matches[0]
                   if (
                       asset.get("state") != "uploaded"
-                      or asset.get("digest") != expected_digests.get(name)
+                      or asset.get("digest")
+                      != expected_manifest["assets"][name]["digest"]
                   ):
                       fail(f"Release asset is incomplete or has an unexpected digest: {name}")
               return release
@@ -454,18 +535,25 @@ jobs:
               if manifest is None:
                   fail("Published release has no verified asset digest manifest.")
               resolve_tag_commit()
-              verify_release(release, expected_draft=False, expected_digests=manifest)
+              verify_release(release, expected_draft=False, expected_manifest=manifest)
               resolve_tag_commit()
               print("The published release already contains the verified archives.")
               raise SystemExit(0)
 
           release_id = validate_release(release, expected_draft=True)
           manifest = read_asset_manifest(release)
-          expected_digests = (
-              dict(manifest)
-              if manifest is not None
-              else {name: sha256(path) for name, path in expected_assets}
-          )
+          if manifest is None:
+              run_id = current_run_id()
+              expected_manifest = {
+                  "source_sha": source_sha,
+                  "assets": {
+                      name: {"digest": sha256(path), "run_id": run_id}
+                      for name, path in expected_assets
+                  },
+              }
+          else:
+              validate_manifest_provenance(manifest)
+              expected_manifest = manifest
           assets = release_assets(release_id)
           expected_names = {name for name, _ in expected_assets}
           if any(asset.get("name") not in expected_names for asset in assets):
@@ -479,25 +567,29 @@ jobs:
               if not matches:
                   # No bytes exist on GitHub for this asset yet. Record this
                   # build's digest before uploading so retries can resume.
-                  expected_digests[name] = sha256(path)
+                  expected_manifest["assets"][name] = {
+                      "digest": sha256(path),
+                      "run_id": current_run_id(),
+                  }
                   uploads.append(path)
                   continue
               asset = matches[0]
               if (
                   asset.get("state") != "uploaded"
-                  or asset.get("digest") != expected_digests[name]
+                  or asset.get("digest")
+                  != expected_manifest["assets"][name]["digest"]
               ):
                   fail(f"Draft release contains a conflicting {name}; refusing to replace it.")
               print(f"Reusing matching release asset: {name}")
 
-          if manifest is None or expected_digests != manifest:
+          if manifest is None or expected_manifest != manifest:
               # Persist the digest baseline before any upload. Existing assets
-              # retain their verified digests; only missing assets adopt the
-              # current tag build's digest, making partial draft retries safe.
-              write_asset_manifest(release, expected_digests)
+              # retain their verified digests and run provenance; only missing
+              # assets adopt the current tag build's digest and run ID.
+              write_asset_manifest(release, expected_manifest)
               release = read_release()
               manifest = read_asset_manifest(release)
-              if manifest != expected_digests:
+              if manifest != expected_manifest:
                   fail("Could not verify the recorded release asset digest manifest.")
 
           if uploads:
@@ -517,7 +609,7 @@ jobs:
           verify_release(
               release,
               expected_draft=True,
-              expected_digests=expected_digests,
+              expected_manifest=expected_manifest,
           )
           resolve_tag_commit()
           run_gh("release", "edit", tag, "--draft=false", "--repo", repo)
@@ -525,7 +617,7 @@ jobs:
           verify_release(
               release,
               expected_draft=False,
-              expected_digests=expected_digests,
+              expected_manifest=expected_manifest,
           )
           resolve_tag_commit()
           print("Published the verified Windows and Linux release archives.")
