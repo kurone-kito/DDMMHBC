@@ -313,8 +313,12 @@ jobs:
               if type(workflow_run) is not dict:
                   fail("Could not read the release asset's originating workflow run.")
               workflow_path = workflow_run.get("path")
+              workflow_ref = None
               if isinstance(workflow_path, str):
-                  workflow_path = workflow_path.split("@", 1)[0]
+                  workflow_path, separator, workflow_ref = workflow_path.partition("@")
+                  if not separator:
+                      workflow_ref = None
+              head_branch = workflow_run.get("head_branch")
               run_repository = workflow_run.get("repository")
               head_repository = workflow_run.get("head_repository")
               if (
@@ -324,7 +328,8 @@ jobs:
                       or workflow_path.endswith("/.github/workflows/release.yml")
                   )
                   or workflow_run.get("event") != "push"
-                  or workflow_run.get("head_branch") != tag
+                  or workflow_ref not in (tag, f"refs/tags/{tag}")
+                  or head_branch not in (None, tag)
                   or workflow_run.get("head_sha") != source_sha
                   or type(run_repository) is not dict
                   or run_repository.get("full_name", "").lower() != repo.lower()
