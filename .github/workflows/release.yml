@@ -338,6 +338,8 @@ jobs:
               return [asset for page in asset_pages for asset in page]
 
           def read_asset_manifest(release):
+              if type(release) is not dict:
+                  fail("Could not read the release asset digest manifest.")
               body = release.get("body")
               if not isinstance(body, str) or asset_manifest_marker not in body:
                   return None
@@ -358,10 +360,12 @@ jobs:
           def write_asset_manifest(release, digests):
               release_id = validate_release(release, expected_draft=True)
               body = release.get("body")
-              if not isinstance(body, str) or asset_manifest_marker in body:
-                  fail("Draft release cannot safely record its asset digest manifest.")
+              if not isinstance(body, str):
+                  fail("Draft release notes are missing; cannot record asset digests.")
+              if body.count(asset_manifest_marker) > 1:
+                  fail("Draft release contains multiple asset digest manifests.")
+              notes = body.split(asset_manifest_marker, 1)[0].rstrip()
               entries = [f"{name}={digests[name]}" for name, _ in expected_assets]
-              notes = body.rstrip()
               if notes:
                   notes += "\n\n"
               notes += asset_manifest_marker + "\n" + "\n".join(entries) + "\n"
@@ -454,9 +458,11 @@ jobs:
 
           release_id = validate_release(release, expected_draft=True)
           manifest = read_asset_manifest(release)
-          expected_digests = manifest or {
-              name: sha256(path) for name, path in expected_assets
-          }
+          expected_digests = (
+              dict(manifest)
+              if manifest is not None
+              else {name: sha256(path) for name, path in expected_assets}
+          )
           assets = release_assets(release_id)
           expected_names = {name for name, _ in expected_assets}
           if any(asset.get("name") not in expected_names for asset in assets):
@@ -468,10 +474,9 @@ jobs:
           for name, path in expected_assets:
               matches = [asset for asset in assets if asset.get("name") == name]
               if not matches:
-                  if manifest is not None and sha256(path) != expected_digests[name]:
-                      fail(
-                          f"Missing {name} cannot be recreated with its recorded digest."
-                      )
+                  # No bytes exist on GitHub for this asset yet. Record this
+                  # build's digest before uploading so retries can resume.
+                  expected_digests[name] = sha256(path)
                   uploads.append(path)
                   continue
               asset = matches[0]
@@ -481,6 +486,16 @@ jobs:
               ):
                   fail(f"Draft release contains a conflicting {name}; refusing to replace it.")
               print(f"Reusing matching release asset: {name}")
+
+          if manifest is None or expected_digests != manifest:
+              # Persist the digest baseline before any upload. Existing assets
+              # retain their verified digests; only missing assets adopt the
+              # current tag build's digest, making partial draft retries safe.
+              write_asset_manifest(release, expected_digests)
+              release = read_release()
+              manifest = read_asset_manifest(release)
+              if manifest != expected_digests:
+                  fail("Could not verify the recorded release asset digest manifest.")
 
           if uploads:
               run_gh(
@@ -501,17 +516,6 @@ jobs:
               expected_draft=True,
               expected_digests=expected_digests,
           )
-          if manifest is None:
-              write_asset_manifest(release, expected_digests)
-              release = read_release()
-              manifest = read_asset_manifest(release)
-              if manifest != expected_digests:
-                  fail("Could not verify the recorded release asset digest manifest.")
-              verify_release(
-                  release,
-                  expected_draft=True,
-                  expected_digests=expected_digests,
-              )
           resolve_tag_commit()
           run_gh("release", "edit", tag, "--draft=false", "--repo", repo)
           release = read_release()
