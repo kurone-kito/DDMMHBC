@@ -84,6 +84,22 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
+      - name: Prepare isolated Unity project
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -L build || ( -e build && ! -d build ) ]]; then
+            echo 'The build directory is not a safe directory.' >&2
+            exit 1
+          fi
+          mkdir -p build
+          if [[ -e build/UnityProject || -L build/UnityProject ]]; then
+            echo 'The temporary Unity project path already exists.' >&2
+            exit 1
+          fi
+          mkdir build/UnityProject
+          git archive HEAD Assets Packages ProjectSettings | tar -x -C build/UnityProject
+
       - name: Build Unity player
         uses: game-ci/unity-builder@1d4ee0697f193f54668e98961d79907911f4b4f2 # v4.8.1
         env:
@@ -92,9 +108,35 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           unityVersion: auto
+          projectPath: build/UnityProject
           targetPlatform: ${{ matrix.targetPlatform }}
           buildsPath: build
           versioning: None
+
+      - name: Remove isolated Unity project
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e build && ! -L build ]]; then
+            exit 0
+          fi
+          if [[ -L build || ! -d build ]]; then
+            echo 'The build path is not a safe directory.' >&2
+            exit 1
+          fi
+          project_path=build/UnityProject
+          if [[ -L "$project_path" ]]; then
+            echo 'The temporary Unity project path is a symbolic link.' >&2
+            exit 1
+          fi
+          if [[ -e "$project_path" ]]; then
+            if [[ ! -d "$project_path" ]]; then
+              echo 'The temporary Unity project path is not a directory.' >&2
+              exit 1
+            fi
+            rm -rf -- "$project_path"
+          fi
 
       - name: Verify build output is source-safe and secret-free
         env:
@@ -133,43 +175,10 @@ jobs:
             fail('Could not verify that the Unity build left source files unchanged.');
           }
 
-          // The pinned GameCI action copies these default build scripts into
-          // Assets/Editor. Keep the allowlist exact so other source changes fail.
-          const expectedGameCiFiles = new Set([
-            'Assets/Editor/UnityBuilderAction.meta',
-            'Assets/Editor/UnityBuilderAction/Builder.cs',
-            'Assets/Editor/UnityBuilderAction/Builder.cs.meta',
-            'Assets/Editor/UnityBuilderAction/Input.meta',
-            'Assets/Editor/UnityBuilderAction/Input/AndroidSettings.cs',
-            'Assets/Editor/UnityBuilderAction/Input/AndroidSettings.cs.meta',
-            'Assets/Editor/UnityBuilderAction/Input/ArgumentsParser.cs',
-            'Assets/Editor/UnityBuilderAction/Input/ArgumentsParser.cs.meta',
-            'Assets/Editor/UnityBuilderAction/Reporting.meta',
-            'Assets/Editor/UnityBuilderAction/Reporting/CompileListener.cs',
-            'Assets/Editor/UnityBuilderAction/Reporting/CompileListener.cs.meta',
-            'Assets/Editor/UnityBuilderAction/Reporting/StdOutReporter.cs',
-            'Assets/Editor/UnityBuilderAction/Reporting/StdOutReporter.cs.meta',
-            'Assets/Editor/UnityBuilderAction/System.meta',
-            'Assets/Editor/UnityBuilderAction/System/ProcessExtensions.cs',
-            'Assets/Editor/UnityBuilderAction/System/ProcessExtensions.cs.meta',
-            'Assets/Editor/UnityBuilderAction/UnityBuilderAction.asmdef',
-            'Assets/Editor/UnityBuilderAction/UnityBuilderAction.asmdef.meta',
-            'Assets/Editor/UnityBuilderAction/Versioning.meta',
-            'Assets/Editor/UnityBuilderAction/Versioning/Git.cs',
-            'Assets/Editor/UnityBuilderAction/Versioning/Git.cs.meta',
-            'Assets/Editor/UnityBuilderAction/Versioning/GitException.cs',
-            'Assets/Editor/UnityBuilderAction/Versioning/GitException.cs.meta',
-            'Assets/Editor/UnityBuilderAction/Versioning/VersionApplicator.cs',
-            'Assets/Editor/UnityBuilderAction/Versioning/VersionApplicator.cs.meta',
-            'Assets/Editor/UnityBuilderAction/Versioning/VersionGenerator.cs',
-            'Assets/Editor/UnityBuilderAction/Versioning/VersionGenerator.cs.meta',
-          ]);
           const changes = status.stdout.split('\0').filter(Boolean);
           const unexpectedChanges = changes.filter((entry) => {
-            const statusCode = entry.slice(0, 2);
             const changedPath = entry.slice(3);
-            return !changedPath.startsWith('build/') &&
-              !(statusCode === '??' && expectedGameCiFiles.has(changedPath));
+            return !changedPath.startsWith('build/');
           });
           if (unexpectedChanges.length > 0) {
             for (const entry of unexpectedChanges) {
