@@ -112,6 +112,7 @@ jobs:
           targetPlatform: ${{ matrix.targetPlatform }}
           buildsPath: build
           versioning: None
+          runAsHostUser: ${{ runner.os == 'Linux' }}
 
       - name: Remove isolated Unity project
         if: always()
