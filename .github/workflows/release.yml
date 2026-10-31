@@ -238,6 +238,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
+          import copy
           import hashlib
           import json
           import os
@@ -558,7 +559,7 @@ jobs:
               }
           else:
               validate_manifest_provenance(manifest)
-              expected_manifest = manifest
+              expected_manifest = copy.deepcopy(manifest)
           assets = release_assets(release_id)
           expected_names = {name for name, _ in expected_assets}
           if any(asset.get("name") not in expected_names for asset in assets):
