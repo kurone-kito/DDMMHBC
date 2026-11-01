@@ -39,13 +39,13 @@ jobs:
       actions: read
     steps:
       - name: Download Linux staging artifact
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: Unity-StandaloneLinux64
           path: .nightly/linux
 
       - name: Download Windows staging artifact
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: Unity-StandaloneWindows64
           path: .nightly/windows
